@@ -19,6 +19,7 @@ const check = (name, ok, detail = '') => { results.push([name, ok, detail]); con
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
+  for (const f of fs.readdirSync(OUT)) if (f.endsWith('.png')) fs.rmSync(path.join(OUT, f)); // always a fresh set
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
   const errors = [];
 
@@ -27,13 +28,26 @@ async function main() {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
-  const shot = (name, full = true) => page.screenshot({ path: path.join(OUT, name), fullPage: full });
+  const shot = async (name, full = true) => {
+    // the sticky top bar would be stitched into the middle of a full-page capture: make it static for the shot
+    if (full) await page.addStyleTag({ content: '.topbar{position:static !important}', });
+    await page.screenshot({ path: path.join(OUT, name), fullPage: full });
+    if (full) await page.evaluate(() => { document.querySelectorAll('style').forEach((st) => { if (st.textContent === '.topbar{position:static !important}') st.remove(); }); });
+  };
+  const noHScroll = async (label) => check(`${label}: no horizontal overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && [...document.querySelectorAll('.card, .tscroll')].every((el) => el.scrollWidth <= el.clientWidth + 1 || getComputedStyle(el).overflowX === 'auto')));
 
   await api('reset');
   await page.goto(BASE);
   await page.waitForSelector('.preloader', { state: 'detached', timeout: 5000 });
   check('Landing: SYNTHETIC DATA chip in top bar', await page.locator('.topbar .chip.synthetic').isVisible());
   check('Landing: headline', (await page.locator('h1').innerText()).toLowerCase().includes('invoice-grade card data for b2b sellers'));
+  const pv = await page.locator('.pv').boundingBox();
+  check('Landing: hero right half holds the raw name to code preview', !!pv && pv.x > 640 && /\d{8}/.test(await page.locator('.pv-code').innerText()), pv ? `x=${Math.round(pv.x)}` : 'missing');
+  check('Design: wordmark is lowercase "linegrade" (top bar)', (await page.locator('.brand .wm').innerText()) === 'linegrade' && (await page.locator('.brand .wm').evaluate((e) => getComputedStyle(e).textTransform)) === 'none');
+  check('Design: no notched buttons', await page.evaluate(() => [...document.querySelectorAll('.btn')].every((b) => getComputedStyle(b).clipPath === 'none')));
+  check('Design: no pixel-noise bands, line-item bands present', (await page.locator('.noiseband').count()) === 0 && (await page.locator('.band svg line').count()) >= 4);
+  check('Design: no slash-prefixed labels or nav items', await page.evaluate(() => [...document.querySelectorAll('.label, .nav button')].every((e) => !e.textContent.trim().startsWith('/'))));
+  check('Design: labels use the line-item stub (SVG), not a square bullet', (await page.locator('.label svg').count()) > 0 && await page.evaluate(() => [...document.querySelectorAll('.label')].every((e) => getComputedStyle(e, '::before').content === 'none')));
   await shot('01-landing.png');
 
   await page.getByRole('button', { name: /load demo catalog/i }).click();
@@ -49,18 +63,18 @@ async function main() {
   const needs0 = Number(await page.locator('.stats .stat .n').first().innerText());
   const panelText = await page.locator('.panel').innerText();
   check('Review: opens on NEEDS REVIEW rows only', (await page.evaluate(() => new Set([...document.querySelectorAll('.ag-row[row-id]')].map((r) => r.getAttribute('row-id'))).size)) === needs0 && needs0 > 0, `${needs0} rows`);
-  check('Review: side panel shows official title + runner-up + reason', ['official title', 'runner-up', 'model reason'].every((t) => (panelText || '').toLowerCase().includes(t)));
+  const gridH = await page.locator('.ag-root-wrapper').first().evaluate((e) => e.getBoundingClientRect().height);
+  check('Review: grid height fits the rows shown', Math.abs(gridH - (36 + needs0 * 44 + 2)) <= 6, `${Math.round(gridH)}px for ${needs0} rows`);
+  check('Review: no duplicate chips in the section header', (await page.locator('section.section.tight > div:first-child .chip').count()) === 0);
+  check('Review: side panel shows official title + runner-up + reason', ['official title', 'runner-up', 'model reason'].every((t) => panelText.toLowerCase().includes(t)));
   check('Review: first flagged row is selected in the grid', (await page.locator('.ag-row.ag-row-selected').count()) > 0);
   await shot('03-review.png');
 
-  // Edit flow on the first row (find a code, change unit, approve & lock), then approve/exclude the rest.
-  let steps = 0;
-  let needs = needs0;
+  let steps = 0; let needs = needs0;
   while (needs > 0 && steps++ < 12) {
     const panel = page.locator('.panel');
-    const approve = panel.getByRole('button', { name: 'Approve', exact: true });
-    const hasCode = await approve.isEnabled();
-    if (hasCode) await approve.click(); else await panel.getByRole('button', { name: 'Exclude', exact: true }).click();
+    const approve = panel.getByRole('button', { name: /^Approve/ });
+    if (await approve.isEnabled()) await approve.click(); else await panel.getByRole('button', { name: /^Exclude/ }).click();
     await page.waitForFunction((n) => Number(document.querySelector('.stats .stat .n').textContent) < n, needs, { timeout: 8000 });
     needs = Number(await page.locator('.stats .stat .n').first().innerText());
   }
@@ -70,36 +84,64 @@ async function main() {
 
   await page.getByRole('button', { name: /continue to order/i }).click();
   await page.waitForSelector('.order-grid');
-  await page.waitForSelector('text=/AS VISA SEES IT/');
-  await page.waitForSelector('table.t tbody tr');
-  check('Order: SANDBOX chip visible', await page.locator('.chip.sandbox').first().isVisible());
-  check('Order: $958.05 total in the Visa panel', (await page.locator('.totals').innerText()).includes('958.05'));
-  await shot('04a-order-before-pay.png');
+  await page.waitForSelector('.seg');
+  check('Order: one SYNTHETIC chip in the top bar only (no header duplicates)', (await page.locator('.chip.synthetic').count()) === 1);
+  check('Order: toggle defaults to WITHOUT LineGrade', (await page.getByRole('button', { name: /without linegrade/i }).getAttribute('aria-pressed')) === 'true');
+  await page.waitForSelector('text=Level 1 · standard rate');
+  await page.waitForSelector('.order-grid .kv dt:has-text("Amount")');
+  const w = await page.locator('.order-grid .card').nth(1).innerText();
+  check('Order (without): Level 1 sends amount and order total only, no line items or codes', /AMOUNT\s*958\.05/i.test(w.replace(/\n/g, ' ')) && /ORDER TOTAL/i.test(w) && !/42132203/.test(w) && (await page.locator('.order-grid table.t').count()) === 0, 'chip: Level 1 · standard rate');
+  check('Order (without): validator readiness 0 / 100', /0 \/ 100/.test(w));
+  await shot('04a-order-without.png', false);
 
-  await page.getByRole('button', { name: /pay .*958\.05.* with braintree sandbox/i }).click();
+  await page.getByRole('button', { name: /with linegrade/i }).click();
+  await page.waitForSelector('table.t tbody tr');
+  check('Order (with): line items appear with commodity codes', (await page.locator('table.t tbody tr').count()) === 3 && /42132203/.test(await page.locator('table.t').innerText()));
+  check('Order (with): $958.05 total and readiness 100 / 100', (await page.locator('.totals').innerText()).includes('958.05') && /100 \/ 100/.test(await page.locator('.order-grid').innerText()));
+  check('Order: SANDBOX chip visible near payment', await page.locator('.chip.sandbox').first().isVisible());
+  await page.waitForTimeout(900);
+  await shot('04c-order-with-linegrade.png', false);
+  await noHScroll('Order (before pay)');
+
+  const payBtn = page.getByRole('button', { name: /pay .*958\.05.* with braintree sandbox/i });
+  await payBtn.click();
   await page.waitForSelector('[data-testid="txn-id"]', { timeout: 30000 });
-  await page.waitForSelector('.stamp', { timeout: 10000 });
+  await page.waitForSelector('.stamp');
   const txn = (await page.locator('[data-testid="txn-id"]').innerText()).trim();
   const stamp = (await page.locator('.stamp').innerText()).trim();
-  check('Order: Braintree read-back PASS stamp', /^PASS \d+\/\d+$/.test(stamp), `${stamp}, transaction ${txn}`);
-  const rows = await page.locator('table.t').last().locator('tbody tr').allInnerTexts();
-  check('Order: every read-back check is PASS', rows.length >= 11 && rows.every((r) => /PASS\s*$/.test(r.trim())), `${rows.length} checks`);
-  check('Order: Commercial card = Yes', rows.some((r) => /Commercial card.*Yes.*PASS/s.test(r)));
+  const bBtn = await page.getByRole('button', { name: /^Paid/ }).boundingBox();
+  const bStamp = await page.locator('.stamp').boundingBox();
+  check('Order: PASS stamp + transaction ID directly under the Pay button', /PASS \d+\/\d+/.test(stamp) && bStamp.y > bBtn.y && bStamp.y - (bBtn.y + bBtn.height) < 140, `${stamp.replace(/\s+/g, ' ')}, transaction ${txn}`);
+  check('Order: the 11 checks are collapsed behind "Show all checks"', (await page.locator('table[aria-label="All read-back checks"]').count()) === 0 && await page.getByRole('button', { name: /show all checks/i }).isVisible());
+  await page.waitForTimeout(1500);
   await shot('04-order-paid.png');
+  await page.getByRole('button', { name: /show all checks/i }).click();
+  const rows = await page.locator('table[aria-label="All read-back checks"] tbody tr').allInnerTexts();
+  check('Order: all read-back checks are PASS once expanded', rows.length >= 11 && rows.every((r) => /PASS\s*$/.test(r.trim())), `${rows.length} checks`);
+  check('Order: Commercial card = Yes', rows.some((r) => /Commercial card.*Yes.*PASS/s.test(r)));
+  check('Order: read-back panel shows the 3 line items', (await page.locator('.card', { hasText: 'Visa data read back from Braintree' }).locator('tbody tr').count()) === 3);
+  await noHScroll('Order (paid, checks open)');
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await noHScroll('Order (paid, 1100px wide)');
+  await shot('04d-order-paid-checks-open.png');
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   await page.getByRole('button', { name: /submit same order again/i }).click();
   await page.waitForSelector('text=/ALREADY CHARGED/');
   check('Order: same order again says ALREADY CHARGED', true);
   await shot('04b-order-duplicate.png');
-
   await page.getByRole('button', { name: /see readiness/i }).click();
   await page.waitForSelector('.score');
   await page.waitForTimeout(1800);
-  const score = Number(await page.locator('.score').innerText());
-  check('Readiness: score counted up and shows a value', score > 0, `${score}/100`);
-  check('Readiness: ESTIMATE — source pending tag, dashed', (await page.locator('.estimate-box').innerText()).includes('ESTIMATE — SOURCE PENDING'));
-  check('Readiness: no invented fee numbers', !/\$\s?\d+\.\d\d/.test(await page.locator('.estimate-box').innerText()));
-  check('Readiness: SYNTHETIC DATA chip persists', await page.locator('.topbar .chip.synthetic').isVisible());
+  const after = Number(await page.locator('.score').innerText());
+  const before = Number(await page.locator('.score-before').innerText());
+  check('Readiness: before (Level 1) 0 and after (LineGrade) 100, from the validator', before === 0 && after === 100, `${before} -> ${after}`);
+  check('Readiness: validator table lists 10 checks', (await page.locator('.checks3').first().locator('tbody tr').count()) === 10);
+  const fee = await page.locator('.fee-main').innerText();
+  check('Readiness: main number is the fee difference range, labelled ESTIMATE', /\$2\.40 – \$11\.49/.test(fee) && (await page.locator('.estimate-box .chip.estimate').count()) >= 1, fee);
+  const href = await page.locator('.estimate-box a').first().getAttribute('href');
+  check('Readiness: cites the Visa schedule with its URL and dates', /usa\.visa\.com/.test(href) && /EFFECTIVE 2026-10-24/.test(await page.locator('.estimate-box').innerText()) && /ACCESSED 2026-11-07/.test(await page.locator('.estimate-box').innerText()));
+  check('Readiness: SYNTHETIC DATA chip persists; footer wordmark lowercase with tick', await page.locator('.topbar .chip.synthetic').isVisible() && (await page.locator('.wordmark span').innerText()) === 'linegrade' && (await page.locator('.wordmark .tick').count()) === 1);
   await shot('05-readiness.png');
   await ctx.close();
 
@@ -111,22 +153,16 @@ async function main() {
   check('Reduced motion: no preloader', (await rp.locator('.preloader').count()) === 0);
   await rp.waitForTimeout(150);
   check('Reduced motion: enrichment list appears at once (40 / 40)', (await rp.locator('.counter').innerText()).trim() === '40 / 40');
-  const anim = await rp.evaluate(() => {
-    const names = [];
-    for (const sel of ['.orb', '.orb::before', '.progress i', '.stream-row']) {
-      const [s, pseudo] = sel.split('::');
-      const el = document.querySelector(s);
-      if (el) names.push(getComputedStyle(el, pseudo ? `::${pseudo}` : null).animationName);
-    }
-    return names;
-  });
-  check('Reduced motion: animations are off', anim.length > 0 && anim.every((n) => n === 'none'), anim.join(','));
+  const anim = await rp.evaluate(() => ['.orb', '.progress i', '.stream-row'].map((sel) => getComputedStyle(document.querySelector(sel)).animationName));
+  check('Reduced motion: animations are off', anim.every((n) => n === 'none'), anim.join(','));
   await rp.goto(`${BASE}/?screen=readiness`);
   await rp.waitForSelector('.score');
   const instant = Number(await rp.locator('.score').innerText());
   check('Reduced motion: score shown immediately (no count-up)', instant > 0, `${instant}`);
   const drawAnim = await rp.evaluate(() => getComputedStyle(document.querySelector('.stats.draw .stat'), '::after').animationName);
   check('Reduced motion: stat borders not animated', drawAnim === 'none', drawAnim);
+  const tick = await rp.evaluate(() => { const t = document.querySelector('.wordmark .tick'); const cs = getComputedStyle(t); return [cs.animationName, cs.strokeDashoffset]; });
+  check('Reduced motion: logo tick is fully drawn, not animated', tick[0] === 'none' && parseFloat(tick[1]) === 0, tick.join(','));
   await rctx.close();
 
   await browser.close();

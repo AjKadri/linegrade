@@ -1,18 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { prefersReducedMotion } from './hooks.js';
 
-export function LogoMark({ size = 22 }) {
+// Logo option A ("checked line items"): three bars of decreasing length, an accent tick finishing the
+// shortest line. The tick draws itself (300 ms) when `draw` is set. Bars follow currentColor.
+export function LogoMark({ size = 24, draw = false }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" fill="currentColor" opacity="0.08" />
-      <rect x="6" y="8" width="20" height="3" fill="currentColor" />
-      <rect x="6" y="14.5" width="14" height="3" fill="currentColor" />
-      <rect x="6" y="21" width="8" height="3" fill="#4b3fe0" />
+    <svg width={size} height={size} viewBox="0 0 34 34" aria-hidden="true" style={{ flex: 'none' }}>
+      <rect x="3" y="6" width="22" height="3" fill="currentColor" />
+      <rect x="3" y="15" width="16" height="3" fill="currentColor" />
+      <rect x="3" y="24" width="10" height="3" fill="currentColor" />
+      <path className={`tick${draw ? ' draw' : ''}`} d="M19 25 l4 4 l8 -10" stroke="var(--tick)" strokeWidth="3" fill="none" strokeLinecap="square" pathLength="20" />
     </svg>
   );
 }
 
-export function SectionLabel({ children }) { return <span className="label">/{children}</span>; }
+// Section label ("line-item stub"): two stacked accent bars, then the label in mono caps.
+export function SectionLabel({ children }) {
+  return (
+    <span className="label">
+      <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true"><rect x="0" y="1" width="14" height="2" fill="var(--stub)" /><rect x="0" y="7" width="8" height="2" fill="var(--stub)" /></svg>
+      {children}
+    </span>
+  );
+}
 
 const CHIP = { ok: 'OK', review: 'NEEDS REVIEW', fail: 'FAILED', estimate: 'ESTIMATE', synthetic: 'SYNTHETIC DATA', sandbox: 'SANDBOX', excluded: 'EXCLUDED' };
 export function Chip({ kind, children, flip }) {
@@ -25,7 +35,8 @@ export function StatusChip({ item, flip }) {
   return <Chip kind="review" flip={flip} />;
 }
 
-export function Button({ variant = 'primary', icon, children, small, ...rest }) {
+// Primary buttons end with an arrow; the tick (icon="✓") is only for completion moments (Approve, Paid).
+export function Button({ variant = 'primary', icon = '→', children, small, ...rest }) {
   return (
     <button className={`btn ${variant}${small ? ' small' : ''}`} {...rest}>
       {children}
@@ -39,7 +50,7 @@ export function Orb({ working }) { return <div className={`orb ${working ? 'work
 export function Hud({ model, rows, where = 'SANDBOX · BRAINTREE' }) {
   return (
     <>
-      <div className="hud tl">LINEGRADE · <b>INVOICE-GRADE</b></div>
+      <div className="hud tl">INVOICE-GRADE · <b>SYNTHETIC DEMO</b></div>
       <div className="hud tr">{where}</div>
       <div className="hud bl">MODEL <b>{model || '—'}</b></div>
       <div className="hud br">CATALOG <b>{rows ?? '—'}</b> SKUs</div>
@@ -47,22 +58,19 @@ export function Hud({ model, rows, where = 'SANDBOX · BRAINTREE' }) {
   );
 }
 
-// Pixel-noise band between sections: generated once on a canvas from a seeded PRNG.
-export function NoiseBand() {
-  const url = useMemo(() => {
-    const c = document.createElement('canvas');
-    c.width = 120; c.height = 6;
-    const g = c.getContext('2d');
-    let s = 7;
-    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    for (let x = 0; x < c.width; x++) for (let y = 0; y < c.height; y++) {
-      const v = Math.floor(150 + rnd() * 100);
-      g.fillStyle = `rgba(${v},${v},${v},${rnd() > 0.55 ? 0.55 : 0.12})`;
-      g.fillRect(x, y, 1, 1);
-    }
-    return c.toDataURL();
-  }, []);
-  return <div className="noiseband" style={{ backgroundImage: `url(${url})` }} aria-hidden="true" />;
+// Line-item band between sections: rows of thin 1px lines of varying lengths, like printed invoice lines.
+const BANDS = [[62, 38, 24, 12], [44, 70, 30, 18], [78, 26, 52, 14]];
+export function LineItemBand({ variant = 0 }) {
+  const rows = BANDS[variant % BANDS.length];
+  const ys = [6, 12, 18, 24];
+  return (
+    <div className="band" aria-hidden="true">
+      <svg width="100%" height="30" preserveAspectRatio="none">
+        {rows.map((len, i) => <line key={i} x1="3%" x2={`${len}%`} y1={ys[i] + 0.5} y2={ys[i] + 0.5} stroke="var(--band)" strokeWidth="1" shapeRendering="crispEdges" />)}
+        {rows.map((len, i) => <line key={`r${i}`} x1={`${100 - Math.round(len / 3) - 3}%`} x2="97%" y1={ys[i] + 0.5} y2={ys[i] + 0.5} stroke="var(--band)" strokeWidth="1" shapeRendering="crispEdges" />)}
+      </svg>
+    </div>
+  );
 }
 
 export function Preloader() {
@@ -75,9 +83,11 @@ export function Preloader() {
   if (gone) return null;
   return (
     <div className="preloader" role="status" aria-label="Loading">
-      <LogoMark size={44} />
+      <div style={{ color: '#ede8e8', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <LogoMark size={44} draw />
+        <span className="wm" style={{ fontSize: 28 }}>linegrade</span>
+      </div>
       <div className="bar"><i /></div>
-      <div className="mono" style={{ fontSize: 11, letterSpacing: '0.1em', color: '#8a8a85' }}>LINEGRADE · SYNTHETIC DEMO</div>
     </div>
   );
 }
@@ -89,7 +99,13 @@ export function Footer() {
         <span>Synthetic data</span><span>·</span><span>Sandbox</span><span>·</span><span>Estimates</span>
         <span style={{ marginLeft: 'auto' }}>No real money. No real merchants.</span>
       </div>
-      <div className="wordmark" aria-hidden="true">LINEGRADE</div>
+      <div className="wordmark" aria-label="linegrade">
+        <span>linegrade</span>
+        <svg viewBox="0 0 34 34" aria-hidden="true" className="wm-mark">
+          <rect x="3" y="6" width="22" height="3" fill="currentColor" /><rect x="3" y="15" width="16" height="3" fill="currentColor" /><rect x="3" y="24" width="10" height="3" fill="currentColor" />
+          <path className="tick draw" d="M19 25 l4 4 l8 -10" stroke="var(--tick)" strokeWidth="3" fill="none" strokeLinecap="square" pathLength="20" />
+        </svg>
+      </div>
     </footer>
   );
 }

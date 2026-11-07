@@ -58,7 +58,7 @@ export default function Enrich({ state, catalog, reload, onNext }) {
       <Hud model={state?.modelLabel} rows={total} />
       <div className="enrich-grid" style={{ paddingTop: 36 }}>
         <div className="enrich-left">
-          <SectionLabel>ENRICHMENT</SectionLabel>
+          <SectionLabel>Enrichment</SectionLabel>
           <Orb working={working} />
           <div>
             <div className="counter" aria-live="polite">{rows.length} / {total}</div>
@@ -78,8 +78,8 @@ export default function Enrich({ state, catalog, reload, onNext }) {
           {summary?.last_run && <div className="mono muted" style={{ fontSize: 11 }}>COST ${summary.last_run.cost_usd?.toFixed(4) ?? '—'} · {summary.last_run.classified} CLASSIFIED</div>}
           {error && <div className="banner fail" role="alert"><span>{error}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto', width: '100%' }}>
-            <Button icon="→" onClick={onNext} disabled={phase !== 'done'}>Continue to review</Button>
-            <Button variant="secondary" onClick={rerun} disabled={working}>Re-run AI (keeps locked rows)</Button>
+            <Button onClick={onNext} disabled={phase !== 'done'}>Continue to review</Button>
+            <Button variant="secondary" icon="" onClick={rerun} disabled={working}>Re-run AI (keeps locked rows)</Button>
             <label className="mono muted" style={{ fontSize: 11, display: 'flex', gap: 8, alignItems: 'center', letterSpacing: '0.04em' }}>
               <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> FORCE: RE-CLASSIFY ALL UNLOCKED ROWS
             </label>

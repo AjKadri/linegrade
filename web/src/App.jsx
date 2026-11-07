@@ -9,7 +9,7 @@ import Readiness from './screens/Readiness.jsx';
 
 // DESIGN.md: dark for landing / enrichment / readiness, light for review and order.
 const THEME = { landing: 'dark', enrich: 'dark', review: 'light', order: 'light', readiness: 'dark' };
-const NAV = [['enrich', '/Catalog'], ['review', '/Review'], ['order', '/Order + pay'], ['readiness', '/Readiness']];
+const NAV = [['enrich', 'Catalog'], ['review', 'Review'], ['order', 'Order + pay'], ['readiness', 'Readiness']];
 
 export default function App() {
   const [screen, setScreen] = useState(() => (new URLSearchParams(location.search).get('screen') || 'landing'));
@@ -41,21 +41,20 @@ export default function App() {
       <div className="grain" aria-hidden="true" />
       <header className="topbar">
         <div className="topbar-inner">
-          <button className="brand" onClick={() => go('landing')} aria-label="LineGrade home"><LogoMark /> LineGrade</button>
+          <button className="brand" onClick={() => go('landing')} aria-label="LineGrade home"><LogoMark size={24} /> <span className="wm">linegrade</span></button>
           <nav className="nav" aria-label="Demo steps">
             {NAV.map(([id, label]) => (
               <button key={id} onClick={() => go(id)} disabled={!ready && id !== 'enrich'} aria-current={screen === id ? 'page' : undefined}>{label}</button>
             ))}
           </nav>
           <div className="topbar-right">
-            {screen === 'order' && <Chip kind="sandbox" />}
             <Chip kind="synthetic" />
-            {ready && <Button small variant="secondary" onClick={restart} title="Back to the frozen demo catalog">Reset demo</Button>}
+            {ready && <Button small variant="secondary" icon="" onClick={restart} title="Back to the frozen demo catalog">Reset demo</Button>}
           </div>
         </div>
       </header>
       <main className="frame">
-        {error && <div className="banner fail" role="alert" style={{ margin: 16 }}><span>{error}</span><Button small variant="secondary" onClick={() => setError(null)}>Dismiss</Button></div>}
+        {error && <div className="banner fail" role="alert" style={{ margin: 16 }}><span>{error}</span><Button small variant="secondary" icon="" onClick={() => setError(null)}>Dismiss</Button></div>}
         {screen === 'landing' && <Landing state={state} onLoad={loadDemo} loading={loading} />}
         {screen === 'enrich' && catalog && <Enrich state={state} catalog={catalog} reload={reload} onNext={() => go('review')} />}
         {screen === 'review' && catalog && <Review catalog={catalog} counts={counts} reload={reload} onNext={() => go('order')} />}

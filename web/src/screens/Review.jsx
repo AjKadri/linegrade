@@ -58,11 +58,11 @@ function Panel({ item, onChanged, busy, setBusy, setError }) {
               {!item.approved ? (
                 <>
                   <Button small icon="✓" disabled={busy || !item.unspsc} title={item.unspsc ? 'Accept as classified and lock' : 'No code yet: use Edit to pick one'} onClick={() => act(() => api.approve({ sku: item.sku }))}>Approve</Button>
-                  <Button small variant="secondary" disabled={busy} onClick={startEdit}>Edit</Button>
-                  <Button small variant="secondary" disabled={busy} title="Not a goods line (fee, bundle…): never goes on a card order" onClick={() => act(() => api.exclude(item.sku))}>Exclude</Button>
+                  <Button small variant="secondary" icon="" disabled={busy} onClick={startEdit}>Edit</Button>
+                  <Button small variant="secondary" icon="" disabled={busy} title="Not a goods line (fee, bundle…): never goes on a card order" onClick={() => act(() => api.exclude(item.sku))}>Exclude</Button>
                 </>
               ) : (
-                <Button small variant="secondary" disabled={busy} onClick={() => act(() => api.unapprove(item.sku))}>Unlock</Button>
+                <Button small variant="secondary" icon="" disabled={busy} onClick={() => act(() => api.unapprove(item.sku))}>Unlock</Button>
               )}
             </div>
             {!item.unspsc && !item.approved && <p className="mono muted" style={{ fontSize: 11 }}>NO CODE FITS? EXCLUDE FEES, BUNDLES AND OTHER NON-GOODS LINES.</p>}
@@ -89,7 +89,7 @@ function Panel({ item, onChanged, busy, setBusy, setError }) {
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button small icon="✓" disabled={busy || !form.code || !form.description.trim()} onClick={() => act(() => api.approve({ sku: item.sku, code: form.code, uom: form.uom, description: form.description }))}>Approve &amp; lock</Button>
-              <Button small variant="secondary" disabled={busy} onClick={() => setEdit(false)}>Cancel</Button>
+              <Button small variant="secondary" icon="" disabled={busy} onClick={() => setEdit(false)}>Cancel</Button>
             </div>
           </>
         )}
@@ -130,13 +130,14 @@ export default function Review({ catalog, counts, reload, onNext }) {
 
   selectedRef.current = selected;
   const selItem = selected ? bySku[selected] : null;
+  // Grid height fits the rows shown (header 36 + 44 per row + borders), capped at 560.
+  const gridHeight = rowData.length ? Math.min(36 + rowData.length * 44 + 2, 560) : 120;
 
   return (
     <>
       <section className="section tight" style={{ paddingTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
-          <SectionLabel>REVIEW</SectionLabel>
-          <div style={{ display: 'flex', gap: 8 }}><Chip kind="synthetic" /></div>
+          <SectionLabel>Review</SectionLabel>
         </div>
         <h2 className="h-l" style={{ marginBottom: 16 }}>Review the flagged rows once</h2>
         <div className="stats">
@@ -150,7 +151,7 @@ export default function Review({ catalog, counts, reload, onNext }) {
         {counts.needs_review === 0 && (
           <div className="banner" style={{ marginBottom: 16 }}>
             <span><b className="mono">ALL FLAGGED ROWS REVIEWED.</b> Every approved row is locked: re-running the AI will not touch it.</span>
-            <Button small icon="→" onClick={onNext}>Continue to order</Button>
+            <Button small onClick={onNext}>Continue to order</Button>
           </div>
         )}
         {error && <div className="banner fail" role="alert" style={{ marginBottom: 16 }}><span>{error}</span></div>}
@@ -159,7 +160,9 @@ export default function Review({ catalog, counts, reload, onNext }) {
           <span className="mono muted" style={{ fontSize: 11 }}>{rowData.length} ROWS SHOWN · NEEDS-REVIEW ROWS FIRST</span>
         </div>
         <div className="review-wrap">
-          <div className="grid-box">
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card-h"><SectionLabel>Catalog rows</SectionLabel><Chip kind="synthetic" /></div>
+            <div style={{ height: gridHeight }}>
             <AgGridReact
               theme={gridTheme}
               rowData={rowData}
@@ -174,6 +177,7 @@ export default function Review({ catalog, counts, reload, onNext }) {
               suppressCellFocus
               animateRows={false}
             />
+            </div>
           </div>
           <Panel item={selItem} onChanged={onChanged} busy={busy} setBusy={setBusy} setError={setError} />
         </div>

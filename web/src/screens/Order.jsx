@@ -6,61 +6,52 @@ import { prefersReducedMotion } from '../hooks.js';
 const DEMO_LINES = [{ sku: 'NLS-002', qty: 25 }, { sku: 'NLS-007', qty: 10 }, { sku: 'NLS-005', qty: 5 }];
 const newOrderId = () => `LG-UI-${Date.now().toString(36).toUpperCase()}`;
 
-function PayResult({ result, onAgain, onNext, paying }) {
-  const items = result.lineItemsReturned || [];
-  const [shown, setShown] = useState(prefersReducedMotion() ? items.length : 0);
-  useEffect(() => {
-    if (shown >= items.length) return undefined;
-    const t = setTimeout(() => setShown(shown + 1), 420);
-    return () => clearTimeout(t);
-  }, [shown, items.length]);
+const MISSING_IN_LEVEL1 = ['Line items', 'Commodity codes', 'Units of measure', 'PO number', 'Tax amount', 'Shipping and ships-from'];
+
+// Tick that draws itself inside the PASS stamp.
+const Tick = () => (
+  <svg viewBox="0 0 34 34" aria-hidden="true"><path className="tick draw" d="M5 18 l8 8 l16 -19" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="square" pathLength="20" /></svg>
+);
+
+function ChecksTable({ checks }) {
+  return (
+    <div className="tscroll">
+      <table className="t fixed" aria-label="All read-back checks">
+        <colgroup><col style={{ width: '24%' }} /><col style={{ width: '33%' }} /><col style={{ width: '33%' }} /><col style={{ width: '10%' }} /></colgroup>
+        <thead><tr><th>Check</th><th>Sent</th><th>Braintree returned</th><th className="r">Result</th></tr></thead>
+        <tbody>
+          {checks.map((c) => (
+            <tr key={c.check}><td>{c.check}</td><td className="mono">{c.expected}</td><td className="mono">{String(c.actual)}</td><td className={`r ${c.pass ? 'pass' : 'failt'}`}>{c.pass ? 'PASS' : 'FAIL'}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// The payoff, directly under the Pay button: stamp + transaction id (or the reason nothing was charged).
+function Payoff({ result, paying, onAgain, onNext }) {
+  const [showChecks, setShowChecks] = useState(false);
+  useEffect(() => setShowChecks(false), [result]);
 
   if (result.outcome === 'charged') {
-    const done = shown >= items.length;
-    const failed = (result.checks || []).filter((c) => !c.pass);
+    const failed = result.checks.filter((c) => !c.pass);
     return (
-      <div className="card" aria-live="polite">
-        <div className="card-h">
-          <span className="label">/VISA DATA · READ-BACK FROM BRAINTREE</span>
-          <span style={{ display: 'flex', gap: 6 }}><Chip kind="sandbox" /><Chip kind="synthetic" /></span>
+      <div className="payoff-wrap" aria-live="polite">
+        <div className="payoff">
+          <span className={`stamp${failed.length ? ' fail' : ''}`}><Tick />{failed.length ? `FAIL ${failed.length}` : `PASS ${result.checks.length}/${result.checks.length}`}</span>
+          <div>
+            <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em' }}>TRANSACTION ID</div>
+            <div className="mono" style={{ fontSize: 22 }} data-testid="txn-id">{result.transactionId}</div>
+            <div className="mono muted" style={{ fontSize: 11 }}>{result.status} · {money(result.amount)} · SANDBOX · {result.checks.length - failed.length} OF {result.checks.length} CHECKS PASSED</div>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button small variant="secondary" icon="" onClick={() => setShowChecks(!showChecks)} aria-expanded={showChecks}>{showChecks ? 'Hide checks' : 'Show all checks'}</Button>
+            <Button small variant="secondary" icon="" disabled={paying} onClick={onAgain}>Submit same order again</Button>
+            <Button small onClick={onNext}>See readiness</Button>
+          </div>
         </div>
-        <div className="card-b" style={{ padding: 0 }}>
-          <table className="t">
-            <thead><tr><th>Product</th><th>Commodity</th><th>UoM</th><th className="r">Qty</th><th className="r">Total</th><th className="r">Tax</th><th>Description</th></tr></thead>
-            <tbody>
-              {items.slice(0, shown).map((l) => (
-                <tr key={l.productCode} className="print-in">
-                  <td className="mono">{l.productCode}</td><td className="mono">{l.commodityCode}</td><td className="mono">{l.unitOfMeasure}</td>
-                  <td className="r mono">{l.quantity}</td><td className="r mono">{l.totalAmount}</td><td className="r mono">{l.taxAmount}</td><td>{l.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {done && (
-            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-                <span className={`stamp${failed.length ? ' fail' : ''}`}>{failed.length ? `FAIL ${failed.length}` : `PASS ${result.checks.length}/${result.checks.length}`}</span>
-                <div>
-                  <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em' }}>TRANSACTION ID</div>
-                  <div className="mono" style={{ fontSize: 20 }} data-testid="txn-id">{result.transactionId}</div>
-                  <div className="mono muted" style={{ fontSize: 11 }}>{result.status} · {money(result.amount)} · SANDBOX</div>
-                </div>
-              </div>
-              <table className="t">
-                <thead><tr><th>Check</th><th>Sent</th><th>Braintree returned</th><th className="r">Result</th></tr></thead>
-                <tbody>
-                  {result.checks.map((c) => (
-                    <tr key={c.check}><td>{c.check}</td><td className="mono">{c.expected}</td><td className="mono">{String(c.actual)}</td><td className={`r ${c.pass ? 'pass' : 'failt'}`}>{c.pass ? 'PASS' : 'FAIL'}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <Button small variant="secondary" disabled={paying} onClick={onAgain}>Submit same order again</Button>
-                <Button small icon="→" onClick={onNext}>See readiness</Button>
-              </div>
-            </div>
-          )}
-        </div>
+        {showChecks && <div style={{ marginTop: 14 }}><ChecksTable checks={result.checks} /></div>}
       </div>
     );
   }
@@ -83,9 +74,38 @@ function PayResult({ result, onAgain, onNext, paying }) {
     headline = 'RESULT UNKNOWN'; body = 'Braintree could not be checked. The next attempt with this order will reconcile first.';
   }
   return (
-    <div className={`banner ${tone}`} role="alert">
+    <div className={`banner ${tone}`} role="alert" style={{ marginTop: 16 }}>
       <div><div className="mono" style={{ fontWeight: 500, letterSpacing: '0.04em' }}>{headline}</div><div style={{ marginTop: 4 }}>{body}</div></div>
-      {result.outcome === 'already_charged' && <Button small icon="→" onClick={onNext}>See readiness</Button>}
+      {result.outcome === 'already_charged' && <Button small onClick={onNext}>See readiness</Button>}
+    </div>
+  );
+}
+
+// Line items "print" into the read-back panel one by one.
+function ReadBack({ result }) {
+  const items = result.lineItemsReturned || [];
+  const [shown, setShown] = useState(prefersReducedMotion() ? items.length : 0);
+  useEffect(() => {
+    if (shown >= items.length) return undefined;
+    const t = setTimeout(() => setShown(shown + 1), 420);
+    return () => clearTimeout(t);
+  }, [shown, items.length]);
+  return (
+    <div className="card">
+      <div className="card-h"><SectionLabel>Visa data read back from Braintree</SectionLabel><Chip kind="sandbox" /></div>
+      <div className="tscroll">
+        <table className="t">
+          <thead><tr><th className="nw">Product</th><th className="nw">Commodity</th><th className="nw">UoM</th><th className="r">Qty</th><th className="r">Total</th><th className="r">Tax</th><th>Description</th></tr></thead>
+          <tbody>
+            {items.slice(0, shown).map((l) => (
+              <tr key={l.productCode} className="print-in">
+                <td className="mono nw">{l.productCode}</td><td className="mono nw">{l.commodityCode}</td><td className="mono nw">{l.unitOfMeasure}</td>
+                <td className="r mono">{l.quantity}</td><td className="r mono">{l.totalAmount}</td><td className="r mono">{l.taxAmount}</td><td className="wrap">{l.description}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -100,6 +120,7 @@ export default function Order({ catalog, onNext, onReview }) {
   const [orderId, setOrderId] = useState(null);
   const [result, setResult] = useState(null);
   const [paying, setPaying] = useState(false);
+  const [view, setView] = useState('without'); // default: what a basic Level 1 checkout sends
 
   const body = useMemo(() => ({ items: lines.filter((l) => l.sku), poNumber: po, shipping, taxRatePct: taxPct }), [lines, po, shipping, taxPct]);
 
@@ -120,17 +141,16 @@ export default function Order({ catalog, onNext, onReview }) {
 
   const setLine = (i, patch) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
   const ok = preview?.ok;
+  const paid = result?.outcome === 'charged';
+  const v = ok ? preview.validation : null;
 
   return (
     <section className="section" style={{ paddingTop: 28 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-        <SectionLabel>ORDER + PAY</SectionLabel>
-        <div style={{ display: 'flex', gap: 8 }}><Chip kind="synthetic" /><Chip kind="sandbox" /></div>
-      </div>
+      <div style={{ marginBottom: 16 }}><SectionLabel>Order + pay</SectionLabel></div>
       <h2 className="h-l" style={{ marginBottom: 24 }}>Place a business-card order</h2>
       <div className="order-grid">
         <div className="card">
-          <div className="card-h"><span className="label">/ORDER BUILDER</span><button className="btn small secondary" onClick={() => setLines(DEMO_LINES)}>Load $958 demo order</button></div>
+          <div className="card-h"><SectionLabel>Order builder</SectionLabel><button className="btn small secondary" onClick={() => setLines(DEMO_LINES)}>Load $958 demo order</button></div>
           <div className="card-b" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="lines">
               {lines.map((l, i) => (
@@ -146,7 +166,7 @@ export default function Order({ catalog, onNext, onReview }) {
                 </div>
               ))}
             </div>
-            <div><Button small variant="secondary" disabled={lines.length >= 10} onClick={() => setLines([...lines, { sku: '', qty: 1 }])}>+ Add line</Button></div>
+            <div><Button small variant="secondary" icon="" disabled={lines.length >= 10} onClick={() => setLines([...lines, { sku: '', qty: 1 }])}>+ Add line</Button></div>
             <div className="grid3">
               <label className="field"><span>PO number</span><input className="input mono" value={po} maxLength={17} onChange={(e) => setPo(e.target.value)} /></label>
               <label className="field"><span>Shipping $</span><input className="input mono" value={shipping} onChange={(e) => setShipping(e.target.value)} /></label>
@@ -158,51 +178,82 @@ export default function Order({ catalog, onNext, onReview }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <div className="card">
-            <div className="card-h"><span className="label">/AS VISA SEES IT</span><span className="mono muted" style={{ fontSize: 11 }}>LEVEL 2 + LEVEL 3, AS SENT</span></div>
+            <div className="card-h">
+              <SectionLabel>As Visa sees it</SectionLabel>
+              {view === 'without' ? <Chip kind="level l1">Level 1 · standard rate</Chip> : <Chip kind="level">Level 3 · LineGrade data</Chip>}
+            </div>
+            <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', borderBottom: '1px solid var(--line)' }}>
+              <div className="seg" role="group" aria-label="What Visa receives">
+                <button aria-pressed={view === 'without'} onClick={() => setView('without')}>Without LineGrade</button>
+                <button aria-pressed={view === 'with'} onClick={() => setView('with')}>With LineGrade</button>
+              </div>
+              {v && <span className="mono muted" style={{ fontSize: 11, letterSpacing: '0.04em' }}>
+                DATA READINESS {view === 'without' ? `${v.before.score} / 100 · ${v.before.passed} OF ${v.before.total} CHECKS` : `${v.after.score} / 100 · ${v.after.passed} OF ${v.after.total} CHECKS`}
+              </span>}
+              <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>Paying below always sends the “With LineGrade” data.</span>
+            </div>
             <div className="card-b" style={{ padding: 0 }}>
               {perr && <div className="banner fail" style={{ margin: 16 }}><span>{perr}</span></div>}
               {preview && !ok && (
                 <div className="banner warn" style={{ margin: 16 }} role="alert">
                   <div><div className="mono" style={{ fontWeight: 500 }}>ORDER CANNOT BE BUILT YET</div><div style={{ marginTop: 4 }}>{preview.refused.message}</div></div>
-                  <Button small variant="secondary" onClick={onReview}>Go to review</Button>
+                  <Button small variant="secondary" icon="" onClick={onReview}>Go to review</Button>
                 </div>
               )}
-              {!preview && !perr && <div className="mono muted" style={{ padding: 20, fontSize: 12 }}>ADD A LINE TO SEE THE LEVEL 3 DATA.</div>}
-              {ok && (
-                <>
-                  <dl className="kv" style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
-                    <dt>PO number (L2)</dt><dd className="mono">{preview.request.purchaseOrderNumber}</dd>
-                    <dt>Tax amount (L2)</dt><dd className="mono">{preview.request.taxAmount}</dd>
-                    <dt>Shipping (L3)</dt><dd className="mono">{preview.request.shippingAmount} · ships from {preview.request.shipsFromPostalCode}</dd>
+              {!preview && !perr && <div className="mono muted" style={{ padding: 20, fontSize: 12 }}>ADD A LINE TO SEE WHAT VISA RECEIVES.</div>}
+              {ok && view === 'without' && (
+                <div key="without">
+                  <dl className="kv" style={{ padding: '14px 16px' }}>
+                    <dt>Amount</dt><dd className="mono">{preview.level1.amount} USD</dd>
+                    <dt>Order total</dt><dd className="mono">{preview.level1.amount} USD</dd>
                   </dl>
-                  <table className="t">
-                    <thead><tr><th>Product</th><th>Commodity</th><th>UoM</th><th className="r">Qty</th><th className="r">Unit</th><th className="r">Total</th><th className="r">Tax</th><th>Description</th></tr></thead>
-                    <tbody>
-                      {preview.request.lineItems.map((l) => (
-                        <tr key={l.productCode}><td className="mono">{l.productCode}</td><td className="mono">{l.commodityCode}</td><td className="mono">{l.unitOfMeasure}</td><td className="r mono">{l.quantity}</td><td className="r mono">{l.unitAmount}</td><td className="r mono">{l.totalAmount}</td><td className="r mono">{l.taxAmount}</td><td>{l.description}</td></tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="missing" aria-label="Not sent with Level 1">
+                    {MISSING_IN_LEVEL1.map((m) => (<React.Fragment key={m}><b>{m}</b><span>not sent</span></React.Fragment>))}
+                  </div>
+                </div>
+              )}
+              {ok && view === 'with' && (
+                <div key="with">
+                  <dl className="kv" style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+                    <dt>PO number (L2)</dt><dd className="mono print-in">{preview.request.purchaseOrderNumber}</dd>
+                    <dt>Tax amount (L2)</dt><dd className="mono print-in" style={{ '--d': '60ms' }}>{preview.request.taxAmount}</dd>
+                    <dt>Shipping (L3)</dt><dd className="mono print-in" style={{ '--d': '120ms' }}>{preview.request.shippingAmount} · ships from {preview.request.shipsFromPostalCode}</dd>
+                  </dl>
+                  <div className="tscroll">
+                    <table className="t">
+                      <thead><tr><th className="nw">Product</th><th className="nw">Commodity</th><th className="nw">UoM</th><th className="r">Qty</th><th className="r">Unit</th><th className="r">Total</th><th className="r">Tax</th><th>Description</th></tr></thead>
+                      <tbody>
+                        {preview.request.lineItems.map((l, i) => (
+                          <tr key={l.productCode} className="print-in" style={{ '--d': `${200 + i * 160}ms` }}><td className="mono nw">{l.productCode}</td><td className="mono nw">{l.commodityCode}</td><td className="mono nw">{l.unitOfMeasure}</td><td className="r mono">{l.quantity}</td><td className="r mono">{l.unitAmount}</td><td className="r mono">{l.totalAmount}</td><td className="r mono">{l.taxAmount}</td><td className="wrap">{l.description}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                   <div className="totals">
                     <div><small>Items</small>{preview.totals.items}</div><div><small>Tax</small>{preview.totals.tax}</div><div><small>Shipping</small>{preview.totals.shipping}</div>
                     <div><small>Total USD</small><b style={{ fontSize: 20 }}>{preview.totals.total}</b></div>
                   </div>
-                </>
+                </div>
               )}
             </div>
           </div>
 
           <div className="card">
-            <div className="card-b" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Chip kind="sandbox" /><span className="mono" style={{ fontSize: 12 }}>BRAINTREE SANDBOX · TEST CARD ••••0009 · COMMERCIAL</span></div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>The test card and all keys stay on the server. No real money moves.</div>
+            <div className="card-b">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Chip kind="sandbox" /><span className="mono" style={{ fontSize: 12 }}>BRAINTREE SANDBOX · TEST CARD ••••0009 · COMMERCIAL</span></div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>The test card and all keys stay on the server. No real money moves.</div>
+                </div>
+                {paid
+                  ? <Button icon="✓" disabled>Paid</Button>
+                  : <Button disabled={!ok || paying} onClick={() => pay(false)}>{paying ? 'Charging…' : `Pay ${ok ? money(preview.totals.total) : ''} with Braintree sandbox`}</Button>}
               </div>
-              <Button icon="→" disabled={!ok || paying || (result && result.outcome === 'charged')} onClick={() => pay(false)}>{paying ? 'Charging…' : `Pay ${ok ? money(preview.totals.total) : ''} with Braintree sandbox`}</Button>
+              {result && <Payoff result={result} paying={paying} onAgain={() => pay(true)} onNext={onNext} />}
             </div>
           </div>
 
-          {result && <PayResult result={result} paying={paying} onAgain={() => pay(true)} onNext={onNext} />}
+          {paid && <ReadBack result={result} />}
         </div>
       </div>
     </section>
