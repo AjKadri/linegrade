@@ -1,0 +1,9 @@
+.env
+node_modules/
+PLAN.md
+HANDOFF.md
+.DS_Store
+data/unspsc_english.xlsx
+data/unspsc-subset.csv
+eval/results/
+eval/report.partial.md

@@ -1,0 +1,18 @@
+{
+  "name": "linegrade-dependency-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LineGrade core-dependency tests: do the Braintree and PayPal sandboxes accept and return Level 3 card data?",
+  "type": "commonjs",
+  "scripts": {
+    "test:braintree": "node --env-file=.env braintree-l3-test.js",
+    "test:paypal": "node --env-file=.env paypal-l3-test.js",
+    "test": "npm run test:braintree; npm run test:paypal"
+  },
+  "dependencies": {
+    "braintree": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}
