@@ -8,12 +8,21 @@
     "test:braintree": "node --env-file=.env braintree-l3-test.js",
     "test:paypal": "node --env-file=.env paypal-l3-test.js",
     "test": "npm run test:braintree; npm run test:paypal",
-    "test:unit": "node --test test/*.test.js"
+    "test:unit": "node --test test/*.test.js",
+    "web:install": "npm --prefix web install",
+    "web:build": "npm --prefix web run build",
+    "server": "node server/index.js",
+    "demo": "npm --prefix web run build && node server/index.js",
+    "screens": "node scripts/screenshots.js"
   },
   "dependencies": {
-    "braintree": "^3.0.0"
+    "braintree": "^3.0.0",
+    "express": "^5.3.0"
   },
   "engines": {
     "node": ">=20.6"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.0"
   }
 }

@@ -9,3 +9,5 @@ eval/results/*
 !eval/results/m2-run.log
 data/ledger.json
 eval/report.partial.md
+data/session-catalog.json
+web/dist/

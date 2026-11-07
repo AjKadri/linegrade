@@ -36,3 +36,12 @@ Each script prints PASS/FAIL per check and a verdict at the end. If something fa
 - **Token or signup fails:** sandbox access from your account or network is the blocker to resolve first.
 
 Commodity codes and units in `order-fixture.js` are illustrative placeholders for the test. Assigning real ones is the job LineGrade's AI would do.
+
+## Run the demo UI (SYNTHETIC data, Braintree SANDBOX)
+```bash
+npm install && npm run web:install     # once
+npm run demo                           # builds web/ and serves UI + API on http://127.0.0.1:8787
+npm run screens                        # optional: click through in Chrome, save docs/screens/*.png
+npm run test:unit                      # unit and API tests (no payment calls)
+```
+Needs `.env` (see `.env.example`) for the LLM key and Braintree sandbox keys, which stay on the server. The frozen `data/enriched-catalog.json` is used by default; approvals and AI re-runs work on a gitignored copy (`data/session-catalog.json`). The server resets that copy on start.

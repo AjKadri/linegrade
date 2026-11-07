@@ -129,7 +129,7 @@ function itemFromResult(row, res, error) {
   };
 }
 
-async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, force = false, log = console.log } = {}) {
+async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, force = false, log = console.log, onProgress = () => {} } = {}) {
   const rows = readCatalog(input);
   const existing = readExisting(output);
   const plan = planEnrichment(rows, existing, { force });
@@ -141,6 +141,12 @@ async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, f
     else items[row.sku] = { ...existing[row.sku], unit_price: row.unit_price }; // price is not a classification input
   }
   for (const sku of plan.removed) items[sku] = existing[sku];
+  // Progress hook (used by the web UI): the plan first, then one event per row as it becomes ready.
+  onProgress({ type: 'plan', total: rows.length, toClassify: todo.length, actions: plan.actions });
+  for (const row of rows) {
+    const { action, reason } = plan.actions[row.sku];
+    if (action !== 'classify') onProgress({ type: 'item', sku: row.sku, action, reason, item: items[row.sku] });
+  }
 
   let next = 0; let cost = 0; let costKnown = true; let model = process.env.LLM_MODEL;
   async function worker() {
@@ -157,12 +163,13 @@ async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, f
         model = res.diagnostics.model;
       }
       items[row.sku] = itemFromResult(row, res, error);
+      onProgress({ type: 'item', sku: row.sku, action: 'classify', reason: plan.actions[row.sku].reason, item: items[row.sku] });
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker));
 
   const ordered = Object.fromEntries([...rows.map((r) => r.sku), ...plan.removed].map((sku) => [sku, items[sku]]));
-  const counts = { ok: 0, needs_review: 0, approved: 0 };
+  const counts = { ok: 0, needs_review: 0, excluded: 0, approved: 0 };
   for (const it of Object.values(ordered)) { counts[it.status]++; if (it.approved) counts.approved++; }
   const byReason = {};
   for (const r of rows) { const a = plan.actions[r.sku]; const k = `${a.action}:${a.reason}`; byReason[k] = (byReason[k] || 0) + 1; }
@@ -221,17 +228,27 @@ function approveSku(sku, overrides = {}, { output = DEFAULT_OUTPUT } = {}) {
   return { sku, changes, item };
 }
 
-function unapproveSku(sku, { output = DEFAULT_OUTPUT } = {}) {
+/** Seller decision: this row is not a goods line (fee, bundle, ...) and must never go on a card order. Locks the row. */
+function excludeSku(sku, { output = DEFAULT_OUTPUT, note = 'not a goods line' } = {}) {
   const parsed = JSON.parse(fs.readFileSync(output, 'utf8'));
   const item = parsed.items[sku];
   if (!item) throw new Error(`SKU ${sku} is not in ${path.relative(process.cwd(), output)}`);
-  item.approved = false; delete item.approved_at; delete item.approval_changes;
-  if (item.review_reasons && item.review_reasons.length) item.status = 'needs_review'; // back to what the model said
+  Object.assign(item, { status: 'excluded', excluded: true, approved: true, approved_at: new Date().toISOString(), approval_changes: [`excluded from card orders (${note})`] });
   fs.writeFileSync(output, `${JSON.stringify(parsed, null, 2)}\n`);
   return item;
 }
 
-module.exports = { enrichCatalog, planEnrichment, approveSku, unapproveSku, readCatalog, DEFAULT_OUTPUT, DEFAULT_INPUT };
+function unapproveSku(sku, { output = DEFAULT_OUTPUT } = {}) {
+  const parsed = JSON.parse(fs.readFileSync(output, 'utf8'));
+  const item = parsed.items[sku];
+  if (!item) throw new Error(`SKU ${sku} is not in ${path.relative(process.cwd(), output)}`);
+  item.approved = false; delete item.approved_at; delete item.approval_changes; delete item.excluded;
+  item.status = item.review_reasons && item.review_reasons.length ? 'needs_review' : 'ok'; // back to what the model said
+  fs.writeFileSync(output, `${JSON.stringify(parsed, null, 2)}\n`);
+  return item;
+}
+
+module.exports = { enrichCatalog, planEnrichment, approveSku, excludeSku, unapproveSku, readCatalog, DEFAULT_OUTPUT, DEFAULT_INPUT };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);

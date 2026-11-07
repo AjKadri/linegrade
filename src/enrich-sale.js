@@ -94,18 +94,20 @@ function enrichSale(order, opts = {}) {
   validateOrder(order);
   const catalog = opts.catalog || loadCatalog(opts.catalogPath);
 
-  const missing = []; const needsReview = [];
+  const missing = []; const needsReview = []; const excluded = [];
   for (const { sku } of order.items) {
     const row = catalog.items[sku];
     if (!row) missing.push(sku);
+    else if (row.status === 'excluded') excluded.push(sku);
     else if (row.status !== 'ok') needsReview.push(sku);
     else if (!row.unspsc || !row.uom_braintree || !row.description) needsReview.push(sku); // defensive: "ok" without data
   }
-  if (missing.length || needsReview.length) {
+  if (missing.length || needsReview.length || excluded.length) {
     const parts = [];
     if (missing.length) parts.push(`not in catalog: ${missing.join(', ')}`);
     if (needsReview.length) parts.push(`needs_review (review these before invoicing): ${needsReview.join(', ')}`);
-    throw new EnrichSaleError('REFUSED', `Order ${order.orderId} refused, ${parts.join('; ')}`, { missing, needsReview });
+    if (excluded.length) parts.push(`excluded from card orders by the seller (not goods lines): ${excluded.join(', ')}`);
+    throw new EnrichSaleError('REFUSED', `Order ${order.orderId} refused, ${parts.join('; ')}`, { missing, needsReview, excluded });
   }
 
   let itemsC = 0; let taxC = 0;
