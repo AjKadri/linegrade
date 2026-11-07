@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "label": "ESTIMATE",
+  "retrieved_on": "2026-11-07",
+  "scope": "Visa U.S. credit interchange for commercial cards, card-not-present B2B sale. Interchange only: excludes processor markup, assessments, and the participation fee some secondary sources report (0.05%). Not a claim of savings achieved; the Braintree sandbox never shows interchange charged.",
+  "how_it_was_read": "Primary source: the Visa PDF was downloaded on 2026-11-07 and its text extracted with pypdf; rates below are copied from the extracted pages. Secondary sources were read as web pages and are used only to show where sources disagree.",
+  "sources": [
+    {
+      "id": "visa-irf",
+      "kind": "primary",
+      "publisher": "Visa",
+      "title": "Visa USA Interchange Reimbursement Fees (Visa Supplemental Requirements)",
+      "url": "https://usa.visa.com/dam/VCOM/download/merchants/visa-usa-interchange-reimbursement-fees.pdf",
+      "document_date": "2026-10-24",
+      "effective": "2026-10-24",
+      "accessed": "2026-11-07",
+      "pages": "printed p.16 (Corporate and Purchasing), p.21 (Business, excluding prepaid)"
+    },
+    {
+      "id": "paymentreview",
+      "kind": "secondary",
+      "publisher": "Payment Review",
+      "title": "Visa CEDP and Level 3 data: B2B interchange in 2026",
+      "url": "https://paymentreview.com/blog/visa-cedp-level-3-b2b-interchange/",
+      "published": "2026-09-02",
+      "accessed": "2026-11-07",
+      "says": "Commercial Product 3 1.75% + $0.10; Commercial Card Not Present 2.70% + $0.10; Non-Qualified 2.95% + $0.10; cites a Visa document dated 18 April 2026. Agrees with the Visa schedule."
+    },
+    {
+      "id": "verisave",
+      "kind": "secondary",
+      "publisher": "Verisave",
+      "title": "Visa CEDP Rates 2026: Product 3 Interchange Tables",
+      "url": "https://verisave.com/blog/visa-cedp-rates",
+      "published": "2026-01-13",
+      "updated": "2026-03",
+      "accessed": "2026-11-07",
+      "says": "Corporate/Purchasing Product 3 (verified) 1.75% + $0.10; non-verified 2.05% + $0.10. Page dates are internally inconsistent and it does not reproduce Visa's schedule.",
+      "conflict": "Its 2.05% non-verified fallback conflicts with Visa's 24 Oct 2026 schedule (Card Not Present 2.70%, Non-Qualified 2.95%). Visa's Level 2 programme ended in April 2026, so this figure is likely out of date."
+    },
+    {
+      "id": "pymnts-2026-04",
+      "kind": "secondary",
+      "publisher": "PYMNTS",
+      "title": "It's Level 3 or bust as Visa's interchange shift rewires B2B data",
+      "url": "https://www.pymnts.com/news/b2b-payments/2026/its-level-3-or-bust-as-visas-interchange-shift-rewires-b2b-data/",
+      "published": "2026-04-21",
+      "accessed": "2026-11-07",
+      "says": "Visa ended its Level 2 interchange programme on 18 April 2026; interchange now depends on verified Level 3 data. Gives no rate figures."
+    },
+    {
+      "id": "digitaltransactions-2025-10",
+      "kind": "secondary",
+      "publisher": "Digital Transactions",
+      "title": "Visa's new Commercial Enhanced Data Program: what merchants need to know",
+      "url": "https://www.digitaltransactions.net/commentary-visas-new-commercial-enhanced-data-program-what-merchants-need-to-know/",
+      "published": "2025-10-07",
+      "accessed": "2026-11-07",
+      "says": "Merchants with errors or incomplete data 'could face a 40% increase'; gives a $500 example of about $9.60 (qualifying) versus up to $14.85 (downgraded) attributed to an external link, not to Visa.",
+      "conflict": "The $9.60 example implies about 1.90% + $0.10 for the qualifying case, versus Visa's 1.75% + $0.10 for Commercial Product 3. Older (Oct 2025) and not Visa data."
+    },
+    {
+      "id": "intellipay-2026-04",
+      "kind": "secondary",
+      "publisher": "Intellipay",
+      "title": "What changed with Visa interchange fees in 2026?",
+      "url": "https://intellipay.com/big-changes-coming-to-visa-interchange-fees/",
+      "published": "2026-04-20",
+      "accessed": "2026-11-07",
+      "says": "Small business Level 2 rates rose 75 bps on 24 Jan 2026 and Product 3 small business rates 65 bps. Not about corporate/purchasing cards."
+    }
+  ],
+  "rates": [
+    { "id": "pc_product3", "card_program": "Visa Purchasing / Corporate", "fee_program": "Commercial Product 3", "role": "enhanced_data_verified", "percent": 1.75, "fixed_usd": 0.10, "source": "visa-irf", "page": "16" },
+    { "id": "pc_cnp", "card_program": "Visa Purchasing / Corporate", "fee_program": "Commercial Card Not Present", "role": "standard_fallback", "percent": 2.70, "fixed_usd": 0.10, "source": "visa-irf", "page": "16" },
+    { "id": "pc_nonqualified", "card_program": "Visa Purchasing / Corporate", "fee_program": "Non-Qualified", "role": "downgrade", "percent": 2.95, "fixed_usd": 0.10, "source": "visa-irf", "page": "16" },
+    { "id": "biz1_product3", "card_program": "Visa Business, credit spend tier I", "fee_program": "Business Product 3", "role": "enhanced_data_verified", "percent": 2.40, "fixed_usd": 0.10, "source": "visa-irf", "page": "21", "note": "Tiers II-V are 2.55 / 2.60 / 2.70 / 2.75 for Product 3 and 2.80 / 2.85 / 2.95 / 3.00 for Product 1: the gap is 0.25 points in every tier." },
+    { "id": "biz1_product1", "card_program": "Visa Business, credit spend tier I", "fee_program": "Business Product 1", "role": "standard_fallback", "percent": 2.65, "fixed_usd": 0.10, "source": "visa-irf", "page": "21" }
+  ],
+  "scenarios": [
+    { "id": "business_card", "label": "Visa Business card (standard Product 1 vs Product 3)", "standard": "biz1_product1", "product3": "biz1_product3", "edge": "low" },
+    { "id": "purchasing_corporate_cnp", "label": "Visa Purchasing/Corporate card, card-not-present fallback", "standard": "pc_cnp", "product3": "pc_product3", "edge": "reference" },
+    { "id": "purchasing_corporate_nonqualified", "label": "Visa Purchasing/Corporate card, downgraded to Non-Qualified", "standard": "pc_nonqualified", "product3": "pc_product3", "edge": "high" }
+  ],
+  "conflicts": [
+    "The sandbox test card is only flagged 'Commercial: Yes'; its Visa product (Business vs Purchasing/Corporate) is unknown, so the estimate is a range across Visa's own schedule.",
+    "Verisave (Jan 2026) lists a 2.05% + $0.10 non-verified rate for Corporate/Purchasing; Visa's 24 Oct 2026 schedule has no such line (fallbacks are 2.70% and 2.95%). Not used in the range because it predates the April 2026 retirement of Level 2; its figure would give a smaller difference than the low end already shown.",
+    "Digital Transactions (Oct 2025) implies about 1.90% + $0.10 for qualifying Level 3; Visa's schedule says 1.75% + $0.10. Visa's figure is used.",
+    "Sources disagree on whether small-business cards benefit; this estimate is for corporate/purchasing/business cards only."
+  ],
+  "excluded": [
+    "Processor markup (interchange-plus merchants only: blended-rate merchants will not see the difference)",
+    "Visa participation fee reported by secondary sources (0.05% on applicable enhanced-data transactions); not found in Visa's schedule text",
+    "Network assessments and any retroactive downgrade or clawback after Visa's data checks"
+  ]
+}

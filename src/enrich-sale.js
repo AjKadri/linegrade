@@ -1,8 +1,10 @@
 // enrichSale(order): a plain order (SKUs + quantities) -> a Braintree transaction.sale request
 // carrying Level 2/3 data, built from the enriched catalog. No network calls here.
 //
-// Refuses (throws EnrichSaleError, code "REFUSED") if any SKU is missing from the catalog or still
-// needs_review, naming the SKUs. Totals are reconciled to the cent before returning.
+// Refuses (throws EnrichSaleError, code "REFUSED") if any SKU is missing from the catalog, still
+// needs_review or excluded, naming the SKUs. The built request is then run through src/validate.js
+// (totals to the cent, placeholder descriptions, units per processor, field lengths); a failure throws
+// EnrichSaleError code "VALIDATION".
 //
 // Tax rule (same as order-fixture.js): unit tax = round(unit price in cents x taxRate);
 // line tax = unit tax x quantity. Money is handled in integer cents.
@@ -11,6 +13,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+
+const { validateRequest } = require('./validate');
 
 const DEFAULT_CATALOG = path.join(__dirname, '..', 'data', 'enriched-catalog.json');
 
@@ -66,22 +70,6 @@ function validateOrder(order) {
   if (typeof taxRate !== 'number' || !(taxRate >= 0 && taxRate < 1)) bad('taxRate must be a number from 0 up to 1, e.g. 0.08');
   if (!/^\d{5}(-\d{4})?$/.test(String(shipsFromPostalCode || ''))) bad('shipsFromPostalCode must be a US ZIP');
   if (!shipTo || !shipTo.line1 || !shipTo.city || !shipTo.state || !shipTo.postal) bad('shipTo needs line1, city, state, postal');
-}
-
-function reconcile(req) {
-  const fail = (m) => { throw new EnrichSaleError('TOTALS', `Totals do not reconcile: ${m}`); };
-  let lines = 0; let tax = 0;
-  for (const li of req.lineItems) {
-    const qty = Number(li.quantity);
-    const lineTotal = cents(li.unitAmount) * qty;
-    const lineTax = cents(li.unitTaxAmount) * qty;
-    if (cents(li.totalAmount) !== lineTotal) fail(`${li.productCode}: totalAmount ${li.totalAmount} != unit ${li.unitAmount} x ${qty}`);
-    if (cents(li.taxAmount) !== lineTax) fail(`${li.productCode}: taxAmount ${li.taxAmount} != unit tax ${li.unitTaxAmount} x ${qty}`);
-    lines += lineTotal; tax += lineTax;
-  }
-  if (cents(req.taxAmount) !== tax) fail(`taxAmount ${req.taxAmount} != sum of line tax ${money(tax)}`);
-  const expected = lines + tax + cents(req.shippingAmount) - cents(req.discountAmount);
-  if (cents(req.amount) !== expected) fail(`amount ${req.amount} != items ${money(lines)} + tax ${money(tax)} + shipping ${req.shippingAmount} - discount ${req.discountAmount}`);
 }
 
 /**
@@ -160,7 +148,8 @@ function enrichSale(order, opts = {}) {
     lineItems,
     options: { submitForSettlement: true },
   };
-  reconcile(request);
+  const v = validateRequest(request);
+  if (!v.valid) throw new EnrichSaleError('VALIDATION', `Order ${order.orderId} failed validation: ${v.issues.map((i) => i.message).join('; ')}`, { issues: v.issues });
   return request;
 }
 

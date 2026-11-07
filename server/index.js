@@ -14,13 +14,19 @@ try { process.loadEnvFile(path.join(ROOT, '.env')); } catch { /* env may come fr
 
 const { enrichCatalog, approveSku, excludeSku, unapproveSku, DEFAULT_INPUT } = require('../src/enrich-catalog');
 const { enrichSale, EnrichSaleError } = require('../src/enrich-sale');
+const { level1Payload } = require('../src/validate');
 const { chargeRequest } = require('../src/pay');
 const { shortlist, BRAINTREE_UOM, FLAG_THRESHOLD, CLASSIFIER_VERSION } = require('../src/classify');
 const ledger = require('../src/ledger');
+const { orderReadiness, catalogReadiness } = require('../src/readiness');
+const { estimateFeeDifference } = require('../src/fees');
 const store = require('./store');
 
 const SHIP_TO = { line1: '200 Science Park Rd', city: 'Madison', state: 'WI', postal: '53711', country3: 'USA' }; // synthetic
 const SHIPS_FROM = '60607';
+// The demo order (SYNTHETIC): 3 SKUs, about $958 with 8% tax and $25 shipping. The UI starts from it too.
+const DEMO_ORDER = { items: [{ sku: 'NLS-002', qty: 25 }, { sku: 'NLS-007', qty: 10 }, { sku: 'NLS-005', qty: 5 }], poNumber: 'PO-77812', shipping: '25.00', taxRatePct: 8 };
+const SAMPLE_SKUS = ['NLS-002', 'NLS-007', 'NLS-017', 'NLS-024']; // real classifier output, used by the landing preview
 const SKU_RE = /^[A-Za-z0-9._-]{1,12}$/;
 const ORDER_ID_RE = /^[A-Za-z0-9_-]{6,64}$/;
 
@@ -68,6 +74,11 @@ function parseOrder(body) {
   return { poNumber, items: parsed, shipping: shipping.toFixed(2), taxRate: taxPct / 100, shipTo: SHIP_TO, shipsFromPostalCode: SHIPS_FROM };
 }
 
+// Compact view of a validator result for the UI.
+function validationView(v) {
+  return { valid: v.valid, score: v.score, passed: v.passed, total: v.total, checks: v.checks.map((c) => ({ id: c.id, label: c.label, status: c.status, detail: c.detail })) };
+}
+
 function refusalPayload(e) {
   return { code: e.code, message: e.message, details: e.details || {} };
 }
@@ -88,6 +99,8 @@ function createApp() {
       model: meta.model, modelLabel: prettyModel(meta.model),
       flagThreshold: FLAG_THRESHOLD, classifierVersion: CLASSIFIER_VERSION,
       counts: store.counts(items), generatedAt: meta.generated_at,
+      demoOrder: DEMO_ORDER,
+      samples: SAMPLE_SKUS.map((k) => items.find((i) => i.sku === k)).filter((i) => i && i.unspsc).map((i) => ({ rawName: i.raw_name, code: i.unspsc, title: i.unspsc_title, uom: i.uom_braintree, description: i.description })),
     });
   });
 
@@ -145,7 +158,11 @@ function createApp() {
     try {
       const request = enrichSale({ ...order, orderId: 'PREVIEW-ORDER' }, { catalogPath: store.activePath() });
       const itemsTotal = request.lineItems.reduce((s, l) => s + Math.round(Number(l.totalAmount) * 100), 0) / 100;
-      res.json({ ok: true, request, totals: { items: itemsTotal.toFixed(2), tax: request.taxAmount, shipping: request.shippingAmount, total: request.amount } });
+      const rd = orderReadiness(request);
+      res.json({
+        ok: true, request, totals: { items: itemsTotal.toFixed(2), tax: request.taxAmount, shipping: request.shippingAmount, total: request.amount },
+        level1: level1Payload(request), validation: { before: validationView(rd.before), after: validationView(rd.after) },
+      });
     } catch (e) {
       if (e instanceof EnrichSaleError) return res.json({ ok: false, refused: refusalPayload(e) });
       throw e;
@@ -166,19 +183,30 @@ function createApp() {
     }
     const messages = [];
     const result = await chargeRequest(request, { log: (l) => messages.push(l) });
-    res.json({ ...result, request, messages, sandbox: true });
+    res.json({ ...result, request, messages, sandbox: true, validation: validationView(orderReadiness(request).after) });
   }));
 
+  // Readiness: validator-based scores for the demo order (Level 1 before, Level 2/3 after) and the catalog,
+  // plus the fee ESTIMATE for that order from data/rates.json.
   app.get('/api/readiness', (req, res) => {
     const { meta, items, source } = store.read();
     const orders = Object.entries(ledger.read()).filter(([, v]) => v.status === 'charged');
+    let request = null; let refusal = null;
+    try {
+      request = enrichSale({ ...parseOrder(DEMO_ORDER), orderId: 'READINESS-DEMO' }, { catalogPath: store.activePath() });
+    } catch (e) {
+      if (!(e instanceof EnrichSaleError)) throw e;
+      refusal = refusalPayload(e);
+    }
+    const rd = request ? orderReadiness(request) : null;
     res.json({
-      synthetic: true, sandbox: true, source, counts: store.counts(items),
-      modelLabel: prettyModel(meta.model),
+      synthetic: true, sandbox: true, source, counts: store.counts(items), modelLabel: prettyModel(meta.model),
       level3Orders: orders.length,
       lastOrder: orders.length ? { orderId: orders[orders.length - 1][0], transactionId: orders[orders.length - 1][1].transactionId, amount: orders[orders.length - 1][1].amount } : null,
-      // Placeholder until M3 lands the sourced rate table. No rates are invented here.
-      feeEstimate: { status: 'source_pending', label: 'ESTIMATE — source pending', standard: null, cedp: null, difference: null },
+      demoOrder: { ok: !!request, amount: request ? request.amount : null, refusal },
+      order: rd ? { before: validationView(rd.before), after: validationView(rd.after) } : null,
+      catalog: catalogReadiness(items),
+      fee: estimateFeeDifference(request ? request.amount : '958.05'),
     });
   });
 

@@ -1,9 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { createApp } = require('../server/index');
+const store = require('../server/store');
 
 let server; let base;
 test.before(async () => {
+  store.reset(); // always start from the frozen demo catalog, never leftover session state
   await new Promise((r) => { server = createApp().listen(0, '127.0.0.1', r); });
   base = `http://127.0.0.1:${server.address().port}`;
 });
