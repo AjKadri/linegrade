@@ -5,5 +5,7 @@ HANDOFF.md
 .DS_Store
 data/unspsc_english.xlsx
 data/unspsc-subset.csv
-eval/results/
+eval/results/*
+!eval/results/m2-run.log
+data/ledger.json
 eval/report.partial.md

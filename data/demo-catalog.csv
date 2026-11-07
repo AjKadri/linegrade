@@ -1,0 +1,42 @@
+# SYNTHETIC DATA: invented catalog for the fictional "Northfield Lab Supply". Not real products, SKUs or prices. No commodity codes or units on purpose: LineGrade adds them.
+sku,raw_name,unit_price
+NLS-001,Nitrile exam glv Sm 100/bx pf,13.90
+NLS-002,Nitrile exam glv Med 100/bx pf,13.90
+NLS-003,Nitrile exam glv Lg 100/bx pf,13.90
+NLS-004,Latex exam glvs XL pwd-free 100ct,11.40
+NLS-005,Pipet tip 1000uL filtered rk/100 cs/5,58.50
+NLS-006,Pipet tip 10uL univ clear 960/bg,14.75
+NLS-007,Cntrfg tube 15mL conical stl 50/rk,22.40
+NLS-008,Microtube 2.0mL scrw cap 100/pk,18.90
+NLS-009,Pertri plate 60mm sterile 10/slv,6.85
+NLS-010,Glass slide 25x75 plain pre-clnd 50/bx,7.60
+NLS-011,Cover glass 24x50 #1.5 100/bx,9.25
+NLS-012,Erlenmeyer flask 250mL boro wide mouth,24.10
+NLS-013,Beaker 1000mL PP graduated,5.35
+NLS-014,Volumetric flask 100mL class A,31.80
+NLS-015,Sharps cntr 1qt red,3.95
+NLS-016,Lab balance 600g x 0.01g,389.00
+NLS-017,Copy paper ltr 92 bright 5000sht cs,54.90
+NLS-018,Gel pen blue 0.7mm 12/dz,8.40
+NLS-019,Perm marker blk fine 12/bx,11.70
+NLS-020,Staple remover std,2.15
+NLS-021,File folder legal 1/3 cut 100/bx,18.60
+NLS-022,Printer toner blk cartridge 12A,47.30
+NLS-023,Packng tape clr 3in x 110yd 4/pk,15.80
+NLS-024,Garbage bag 55gal clear 1.2mil 100/cs,42.00
+NLS-025,Towel roll hardwound brwn 6rl/cs,38.20
+NLS-026,Dust mop 36in cotton,14.60
+NLS-027,Disinfectant wipes cnstr 75ct,8.90
+NLS-028,Hand soap foam refill 1.2L 3/cs,27.50
+NLS-029,Safety glss amber uv,7.20
+NLS-030,Face shield clr polycarb w/ headgear,11.60
+NLS-031,Ear muff NRR 25 blk,12.40
+NLS-032,Hard-hat yel vented 4pt ratchet,15.90
+NLS-033,Disp lab coat SMS Lg 25/cs,64.00
+NLS-034,ABC fire ext 5lb w/ bracket,49.00
+NLS-035,Hex cap screw 1/2-13x2 zp 25/bx,17.30
+NLS-036,SS flat washer 5/16 100/pk,6.40
+NLS-037,Needle-nose pliers 6in,9.90
+NLS-038,Hazmat shipping fee,35.00
+NLS-039,Lab starter bundle 2 (gloves tubes tips),120.00
+NLS-040,Assorted lab supplies,10.00

@@ -1,0 +1,158 @@
+
+=== m2-flow 2026-11-07T19:23:48.672Z args: --order-id=LG-M2-DEMO-001 ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Classify the demo catalog
+Enriched 40 rows with anthropic/claude-haiku-5.5: 36 ok, 4 needs_review (confidence < 0.6 or no code). Cost $0.0156. Wrote data/enriched-catalog.json
+      needs_review: NLS-028, NLS-038, NLS-039, NLS-040
+
+[2/4] Order LG-M2-DEMO-001, PO PO-77812: NLS-002 x25, NLS-007 x10, NLS-005 x5
+
+[3/4] enrichSale OK: 3 line items, tax 69.05, shipping 25.00, total 958.05 USD
+      NLS-002  42132203  BX  x25  347.50  Nitrile exam gloves, medium size, powder-free, 100 per box
+      NLS-007  41121703  PK  x10  224.00  Centrifuge tube, 15 mL conical, sold in a rack of 50
+      NLS-005  41121601  CS  x5  292.50  Filter pipette tips, 1000 uL, 100 per rack, 5 racks per case
+
+[4/4] Braintree sandbox sale
+
+Sale accepted: transaction ID 70pdaf0w, status submitted_for_settlement, amount 958.05 USD
+
+Read-back (transaction.find + transactionLineItem.findAll):
+CHECK                EXPECTED                                ACTUAL                                  RESULT
+Sale status          accepted                                submitted_for_settlement                PASS
+Amount               958.05                                  958.05                                  PASS
+PO number            PO-77812                                PO-77812                                PASS
+Tax amount           69.05                                   69.05                                   PASS
+Shipping amount      25.00                                   25.00                                   PASS
+Ships-from postal    60607                                   60607                                   PASS
+Commercial card      Yes                                     Yes                                     PASS
+Line items returned  3 of 3                                  3 of 3                                  PASS
+Line 1 NLS-002       42132203 BX x25 total 347.50 tax 27.75  42132203 BX x25 total 347.50 tax 27.75  PASS
+Line 2 NLS-007       41121703 PK x10 total 224.00 tax 17.90  41121703 PK x10 total 224.00 tax 17.90  PASS
+Line 3 NLS-005       41121601 CS x5 total 292.50 tax 23.40   41121601 CS x5 total 292.50 tax 23.40   PASS
+
+RESULT: PASS (11/11 checks)   transaction 70pdaf0w
+
+=== m2-flow 2026-11-07T19:24:28.889Z args: --skip-enrich --order-id=LG-M2-DEMO-001 ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Catalog: reusing data/enriched-catalog.json (--skip-enrich)
+
+[2/4] Order LG-M2-DEMO-001, PO PO-77812: NLS-002 x25, NLS-007 x10, NLS-005 x5
+
+[3/4] enrichSale OK: 3 line items, tax 69.05, shipping 25.00, total 958.05 USD
+      NLS-002  42132203  BX  x25  347.50  Nitrile exam gloves, medium size, powder-free, 100 per box
+      NLS-007  41121703  PK  x10  224.00  Centrifuge tube, 15 mL conical, sold in a rack of 50
+      NLS-005  41121601  CS  x5  292.50  Filter pipette tips, 1000 uL, 100 per rack, 5 racks per case
+
+[4/4] Braintree sandbox sale
+
+ALREADY CHARGED: orderId LG-M2-DEMO-001 was charged as transaction 70pdaf0w (958.05 USD, 2026-11-07T19:24:17.772Z).
+No new sale was created.
+
+=== m2-flow 2026-11-07T19:24:28.983Z args: --skip-enrich --order-id=LG-M2-REVIEW-001 --items=NLS-002:2,NLS-028:1,NLS-040:3 ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Catalog: reusing data/enriched-catalog.json (--skip-enrich)
+
+[2/4] Order LG-M2-REVIEW-001, PO PO-77812: NLS-002 x2, NLS-028 x1, NLS-040 x3
+
+[3/4] enrichSale: REFUSED
+      Order LG-M2-REVIEW-001 refused, needs_review (review these before invoicing): NLS-028, NLS-040
+      No Braintree call was made and the ledger was not touched.
+
+=== m2-flow 2026-11-07T19:24:29.077Z args: --skip-enrich --order-id=LG-M2-UNKNOWN-001 --items=NLS-002:2,NLS-999:1 ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Catalog: reusing data/enriched-catalog.json (--skip-enrich)
+
+[2/4] Order LG-M2-UNKNOWN-001, PO PO-77812: NLS-002 x2, NLS-999 x1
+
+[3/4] enrichSale: REFUSED
+      Order LG-M2-UNKNOWN-001 refused, not in catalog: NLS-999
+      No Braintree call was made and the ledger was not touched.
+
+=== m2-flow 2026-11-07T19:24:39.963Z args: --skip-enrich --order-id=LG-M2-DECLINE-001 --card=4000111111111115 ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Catalog: reusing data/enriched-catalog.json (--skip-enrich)
+
+[2/4] Order LG-M2-DECLINE-001, PO PO-77812: NLS-002 x25, NLS-007 x10, NLS-005 x5
+
+[3/4] enrichSale OK: 3 line items, tax 69.05, shipping 25.00, total 958.05 USD
+      NLS-002  42132203  BX  x25  347.50  Nitrile exam gloves, medium size, powder-free, 100 per box
+      NLS-007  41121703  PK  x10  224.00  Centrifuge tube, 15 mL conical, sold in a rack of 50
+      NLS-005  41121601  CS  x5  292.50  Filter pipette tips, 1000 uL, 100 per rack, 5 racks per case
+
+[4/4] Braintree sandbox sale
+Braintree said: Do Not Honor
+  status=processor_declined processorResponse=2000 Do Not Honor
+Nothing was charged. Ledger status: failed (retry with the same orderId is allowed).
+
+=== m2-flow 2026-11-07T19:24:41.564Z args: --skip-enrich --order-id=LG-M2-LOST-001 --simulate-lost-response ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Catalog: reusing data/enriched-catalog.json (--skip-enrich)
+
+[2/4] Order LG-M2-LOST-001, PO PO-77812: NLS-002 x25, NLS-007 x10, NLS-005 x5
+
+[3/4] enrichSale OK: 3 line items, tax 69.05, shipping 25.00, total 958.05 USD
+      NLS-002  42132203  BX  x25  347.50  Nitrile exam gloves, medium size, powder-free, 100 per box
+      NLS-007  41121703  PK  x10  224.00  Centrifuge tube, 15 mL conical, sold in a rack of 50
+      NLS-005  41121601  CS  x5  292.50  Filter pipette tips, 1000 uL, 100 per rack, 5 racks per case
+
+[4/4] Braintree sandbox sale
+
+No answer from Braintree (simulated: simulated: Braintree reply lost).
+Checked Braintree: the sale DID go through as fjxb6q0r. Ledger set to charged. Do not retry.
+
+=== m2-flow 2026-11-07T19:24:45.903Z args: --skip-enrich --order-id=LG-M2-LOST-001 ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Catalog: reusing data/enriched-catalog.json (--skip-enrich)
+
+[2/4] Order LG-M2-LOST-001, PO PO-77812: NLS-002 x25, NLS-007 x10, NLS-005 x5
+
+[3/4] enrichSale OK: 3 line items, tax 69.05, shipping 25.00, total 958.05 USD
+      NLS-002  42132203  BX  x25  347.50  Nitrile exam gloves, medium size, powder-free, 100 per box
+      NLS-007  41121703  PK  x10  224.00  Centrifuge tube, 15 mL conical, sold in a rack of 50
+      NLS-005  41121601  CS  x5  292.50  Filter pipette tips, 1000 uL, 100 per rack, 5 racks per case
+
+[4/4] Braintree sandbox sale
+
+ALREADY CHARGED: orderId LG-M2-LOST-001 was charged as transaction fjxb6q0r (958.05 USD, 2026-11-07T19:24:45.785Z).
+No new sale was created.
+
+=== m2-flow 2026-11-07T19:25:05.925Z args: (none) ===
+SYNTHETIC catalog (fictional Northfield Lab Supply), Braintree SANDBOX only.
+
+[1/4] Classify the demo catalog
+Enriched 40 rows with anthropic/claude-haiku-5.5: 35 ok, 5 needs_review (confidence < 0.6 or no code). Cost $0.0157. Wrote data/enriched-catalog.json
+      needs_review: NLS-027, NLS-028, NLS-038, NLS-039, NLS-040
+
+[2/4] Order LG-M2-20261107192534, PO PO-77812: NLS-002 x25, NLS-007 x10, NLS-005 x5
+
+[3/4] enrichSale OK: 3 line items, tax 69.05, shipping 25.00, total 958.05 USD
+      NLS-002  42132203  BX  x25  347.50  Nitrile powder-free medical exam gloves, medium size, 100 per box
+      NLS-007  41121703  PK  x10  224.00  15 mL conical centrifuge tubes, steel, 50 per rack
+      NLS-005  41121601  CS  x5  292.50  Filtered pipette tips, 1000 uL, 100 per rack, 5 racks per case
+
+[4/4] Braintree sandbox sale
+
+Sale accepted: transaction ID prpbfd5e, status submitted_for_settlement, amount 958.05 USD
+
+Read-back (transaction.find + transactionLineItem.findAll):
+CHECK                EXPECTED                                ACTUAL                                  RESULT
+Sale status          accepted                                submitted_for_settlement                PASS
+Amount               958.05                                  958.05                                  PASS
+PO number            PO-77812                                PO-77812                                PASS
+Tax amount           69.05                                   69.05                                   PASS
+Shipping amount      25.00                                   25.00                                   PASS
+Ships-from postal    60607                                   60607                                   PASS
+Commercial card      Yes                                     Yes                                     PASS
+Line items returned  3 of 3                                  3 of 3                                  PASS
+Line 1 NLS-002       42132203 BX x25 total 347.50 tax 27.75  42132203 BX x25 total 347.50 tax 27.75  PASS
+Line 2 NLS-007       41121703 PK x10 total 224.00 tax 17.90  41121703 PK x10 total 224.00 tax 17.90  PASS
+Line 3 NLS-005       41121601 CS x5 total 292.50 tax 23.40   41121601 CS x5 total 292.50 tax 23.40   PASS
+
+RESULT: PASS (11/11 checks)   transaction prpbfd5e
