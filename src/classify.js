@@ -17,12 +17,21 @@ const SUBSET_PATH = path.join(__dirname, '..', 'data', 'unspsc-subset.csv');
 const SHORTLIST_SIZE = 40;
 const FLAG_THRESHOLD = 0.6;
 const MAX_DESCRIPTION = 126; // "under 127 characters"
+const CLASSIFIER_VERSION = 2; // bump when prompt/rules change; enrich-catalog reclassifies unapproved rows on a change
+const LOOKALIKE_GAP = 0.2; // runner-up in the same class within this confidence gap => needs review
 
 // Braintree short codes we allow, and the PayPal values that were tested against the sandbox.
 // EA/BX etc. make PayPal's sandbox return a 500, so PayPal never gets the short codes.
 const BRAINTREE_UOM = ['EA', 'BX', 'PK', 'CS', 'LB', 'KG', 'LTR'];
 const PAYPAL_UOM = ['EACH', 'BOX', 'PACK', 'CASE', 'UNIT', 'POUND', 'KILOGRAM', 'LITER', 'KGM', 'LTR', 'ITM'];
 const BT_TO_PP = { EA: 'EACH', BX: 'BOX', PK: 'PACK', CS: 'CASE', LB: 'POUND', KG: 'KGM', LTR: 'LTR' };
+
+// General look-alike rule: the runner-up sits in the same 6-digit class and is within LOOKALIKE_GAP.
+function isLookAlike(code, confidence, runnerUp) {
+  if (!code || !runnerUp || !runnerUp.unspsc) return false;
+  if (code.slice(0, 6) !== runnerUp.unspsc.slice(0, 6)) return false;
+  return Math.round((confidence - runnerUp.confidence) * 100) < Math.round(LOOKALIKE_GAP * 100);
+}
 
 const GENERIC_DESCRIPTIONS = /^(item|items|product|products|misc|miscellaneous|supplies|goods|general|other|stuff|thing|n\/a|none|unknown)(\s*\d*)?$/i;
 
@@ -199,10 +208,11 @@ Rules:
   Examples of pack wording: "250/box" => BX. "cs/6" => CS. "4/pk" => PK. A single tool or instrument => EA.
 - uom_paypal: the matching PayPal value, from ONLY: EACH, BOX, PACK, CASE, UNIT, POUND, KILOGRAM, LITER, KGM, LTR, ITM. (EA=>EACH, BX=>BOX, PK=>PACK, CS=>CASE, LB=>POUND, KG=>KGM, LTR=>LTR.) Never use abbreviations like EA or BX for PayPal.
 - description: a specific, plain-English line item description, under 127 characters, built only from facts in the name (product, size, material, count). Expand abbreviations and fix typos. Never generic ("item", "misc", "supplies"). Do not invent specs that are not in the name. For null rows still describe what the line says.
+- runner_up: the second most plausible shortlist code (never the same as unspsc) with its own confidence on the same 0-1 scale, or null if no other code is plausible. Be honest: when two codes are close (for example two near-identical products), give the runner-up a confidence close to your main one.
 - reason: one short sentence (max 25 words) on why you chose this code (or null).
 
 Reply with a single JSON object and nothing else:
-{"unspsc": "<8 digits or null>", "confidence": <0-1>, "uom_braintree": "...", "uom_paypal": "...", "description": "...", "reason": "..."}`;
+{"unspsc": "<8 digits or null>", "confidence": <0-1>, "uom_braintree": "...", "uom_paypal": "...", "description": "...", "runner_up": {"unspsc": "<8 digits>", "confidence": <0-1>} or null, "reason": "..."}`;
 
 const NORMALIZE_PROMPT = `You rewrite messy B2B catalog product names into a plain product phrase used to search a commodity code list.
 
@@ -236,7 +246,7 @@ async function callLLM({ model, messages, signal, maxTokens = 800 }) {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model, messages, temperature: 0, max_tokens: maxTokens,
+          model, messages, temperature: 0, seed: 42, max_tokens: maxTokens, // temperature 0 + fixed seed (best effort)
           response_format: { type: 'json_object' },
           usage: { include: true }, // OpenRouter: returns cost in usage.cost
         }),
@@ -329,6 +339,19 @@ async function classify(rawName, opts = {}) {
   if (code && !candidates.some((c) => c.code === code)) flags.push('off_shortlist');
   if (!code && confidence > 0.3) confidence = 0.3;
 
+  // Runner-up: second-best shortlist code. Must exist in the subset and differ from the chosen code.
+  let runnerUp = null;
+  const ru = raw.runner_up;
+  if (ru && ru.unspsc != null) {
+    const rc = String(ru.unspsc).trim();
+    if (byCode.has(rc) && rc !== code) runnerUp = { unspsc: rc, unspsc_title: byCode.get(rc).title, confidence: clamp01(ru.confidence) };
+  }
+  const lookAlike = isLookAlike(code, confidence, runnerUp);
+  const reviewReasons = [];
+  if (!code) reviewReasons.push('no_code');
+  else if (confidence < FLAG_THRESHOLD) reviewReasons.push('low_confidence');
+  if (lookAlike) reviewReasons.push('look_alike');
+
   // Units: validate as returned, then repair so downstream never sees an invalid unit.
   let bt = String(raw.uom_braintree || '').trim().toUpperCase();
   let pp = String(raw.uom_paypal || '').trim().toUpperCase();
@@ -353,7 +376,11 @@ async function classify(rawName, opts = {}) {
     uom_paypal: pp,
     description,
     reason,
-    flagged: confidence < FLAG_THRESHOLD || !code,
+    runner_up: runnerUp,
+    look_alike: lookAlike,
+    needs_review: reviewReasons.length > 0,
+    review_reasons: reviewReasons,
+    flagged: reviewReasons.length > 0, // same as needs_review (kept for older callers)
     diagnostics: {
       model,
       flags,
@@ -374,7 +401,7 @@ async function classify(rawName, opts = {}) {
   };
 }
 
-module.exports = { classify, normalizeName, shortlist, loadIndex, BRAINTREE_UOM, PAYPAL_UOM, FLAG_THRESHOLD };
+module.exports = { classify, normalizeName, shortlist, loadIndex, isLookAlike, BRAINTREE_UOM, PAYPAL_UOM, BT_TO_PP, FLAG_THRESHOLD, LOOKALIKE_GAP, CLASSIFIER_VERSION };
 
 if (require.main === module) {
   const name = process.argv.slice(2).join(' ');

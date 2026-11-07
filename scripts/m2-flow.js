@@ -5,6 +5,7 @@
 //   node scripts/m2-flow.js --order-id=X         reuse an orderId (a second run says "already charged")
 //   node scripts/m2-flow.js --items=SKU:qty,...  different order (unknown / needs_review SKUs are refused)
 //   node scripts/m2-flow.js --skip-enrich        reuse data/enriched-catalog.json (no LLM calls)
+//   node scripts/m2-flow.js --force              re-classify every unapproved row (default: only new/changed rows)
 //   node scripts/m2-flow.js --card=NUMBER        other sandbox test card (e.g. a declining one)
 //   node scripts/m2-flow.js --simulate-lost-response   test only: pretend Braintree's reply was lost
 //
@@ -133,7 +134,7 @@ async function main() {
   if (args['skip-enrich']) out('\n[1/4] Catalog: reusing data/enriched-catalog.json (--skip-enrich)');
   else {
     out('\n[1/4] Classify the demo catalog');
-    const cat = await enrichCatalog({ log: out });
+    const cat = await enrichCatalog({ log: out, force: !!args.force });
     const review = Object.values(cat.items).filter((i) => i.status === 'needs_review');
     out(`      needs_review: ${review.map((i) => i.sku).join(', ') || 'none'}`);
   }
@@ -239,7 +240,9 @@ async function main() {
   return failed.length ? 1 : 0;
 }
 
-main().then((code) => { process.exitCode = code; }).catch((e) => {
-  out(`\nERROR: ${e.message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().then((code) => { process.exitCode = code; }).catch((e) => {
+    out(`\nERROR: ${e.message}`);
+    process.exitCode = 1;
+  });
+}

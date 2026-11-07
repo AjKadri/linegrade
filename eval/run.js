@@ -69,7 +69,8 @@ const isNone = (code) => !code || code === 'NONE';
 const cls = (c) => (c ? c.slice(0, 6) : null);
 
 function score(label, res) {
-  const flagged = res.confidence < FLAG_THRESHOLD || !res.unspsc;
+  const flaggedBase = res.confidence < FLAG_THRESHOLD || !res.unspsc; // confidence rule only
+  const flagged = flaggedBase || !!res.look_alike; // production rule: + look-alike runner-up
   const exp = label.expected_unspsc;
   let exact; let accept; let classExact; let classAccept;
   if (isNone(exp)) {
@@ -82,7 +83,7 @@ function score(label, res) {
     classExact = cls(res.unspsc) === cls(exp);
     classAccept = ok.map(cls).includes(cls(res.unspsc));
   }
-  return { exact, accept, classExact, classAccept, flagged };
+  return { exact, accept, classExact, classAccept, flagged, flaggedBase };
 }
 
 function summarize(label, rows) {
@@ -113,6 +114,12 @@ function summarize(label, rows) {
     ppValidFinal: pct(cnt((r) => PAYPAL_UOM.includes(r.res.uom_paypal)), n),
     btMatch: pct(scoredUom.filter((r) => r.res.uom_braintree === r.label.expected_uom_braintree).length, scoredUom.length),
     ppMatch: pct(scoredUom.filter((r) => r.res.uom_paypal === r.label.expected_uom_paypal).length, scoredUom.length),
+    flaggedBase: pct(cnt((r) => r.s.flaggedBase), n),
+    flaggedBaseN: cnt((r) => r.s.flaggedBase),
+    lookOnly: rows.filter((r) => !r.s.flaggedBase && r.s.flagged),
+    wrongUnflaggedBase: cnt((r) => !r.s.accept && !r.s.flaggedBase),
+    wrongUnflaggedFull: cnt((r) => !r.s.accept && !r.s.flagged),
+    highAcceptBase: pct(rows.filter((r) => !r.s.flaggedBase && r.s.accept).length, rows.filter((r) => !r.s.flaggedBase).length),
     flagged: pct(cnt((r) => r.s.flagged), n),
     flaggedN: cnt((r) => r.s.flagged),
     highN: high.length,
@@ -195,7 +202,7 @@ function buildReport(runs, partialNote) {
   L.push(`- Date: ${date}`);
   L.push(`- Git commit: ${gitInfo()}`);
   L.push(`- Code list: UNSPSC UNv260801 (c) UNDP, subset of ${require(path.join(ROOT, 'src', 'classify.js')).loadIndex().entries.length} commodity codes, LLM normalisation, keyword shortlist of 40 (raw + rewritten text), then LLM choice (normalisation model: LLM_MODEL_NORMALIZE, else LLM_MODEL)`);
-  L.push(`- Flag threshold: confidence < ${FLAG_THRESHOLD} (or no code returned)`);
+  L.push(`- Flag (needs_review): confidence < ${FLAG_THRESHOLD}, no code, or a look-alike runner-up (same 6-digit class, confidence gap < 0.2; classifier version ${require(path.join(ROOT, 'src', 'classify.js')).CLASSIFIER_VERSION})`);
   L.push(`- Rows: ${runs[0].summary.n}, concurrency ${CONCURRENCY}`);
   L.push('');
   L.push('## Summary (side by side)');
@@ -215,7 +222,10 @@ function buildReport(runs, partialNote) {
   row('UoM valid, PayPal (as returned by model)', (s) => f1(s.ppValid));
   row('UoM valid after repair (what the app would send)', (s) => `BT ${f1(s.btValidFinal)}, PP ${f1(s.ppValidFinal)}`);
   row('UoM equals label, Braintree / PayPal (56 rows with a label)', (s) => `${f1(s.btMatch)} / ${f1(s.ppMatch)}`);
-  row('Flagged share (confidence < 0.6 or no code)', (s) => `${f1(s.flagged)} (${s.flaggedN}/${s.n})`);
+  row('Flagged share, confidence rule only (< 0.6 or no code)', (s) => `${f1(s.flaggedBase)} (${s.flaggedBaseN}/${s.n})`);
+  row('Flagged share, + look-alike rule (used for targets)', (s) => `${f1(s.flagged)} (${s.flaggedN}/${s.n})`);
+  row('Wrong answers left unflagged: confidence rule only / + look-alike rule', (s) => `${s.wrongUnflaggedBase} / ${s.wrongUnflaggedFull}`);
+  row('Accuracy of unflagged rows (acceptable): confidence rule only / + look-alike rule', (s) => `${f1(s.highAcceptBase)} / ${f1(s.highAccept)}`);
   row('Accuracy on unflagged rows: exact primary', (s) => `${f1(s.highExact)} (n=${s.highN})`);
   row('Accuracy on unflagged rows: exact acceptable', (s) => f1(s.highAccept));
   row('Accuracy on unflagged rows: class level primary', (s) => f1(s.highClass));
@@ -240,6 +250,21 @@ function buildReport(runs, partialNote) {
   L.push('');
   const byCode = require(path.join(ROOT, 'src', 'classify.js')).loadIndex().byCode;
   const title = (c) => (byCode.get(c) ? byCode.get(c).title : '?');
+  L.push('## Look-alike rule: effect on this eval');
+  L.push('');
+  L.push('The model also returns a runner-up code with its own confidence. A row becomes `needs_review` when the runner-up is in the same 6-digit class and the gap is under 0.2. The rule is general and was not tuned per row. Both flag counts below come from the same run, so they differ only by the rule. The prompt also changed (it now asks for the runner-up), so this run is not directly comparable with earlier ones.');
+  L.push('');
+  for (const r of runs) {
+    const lo = r.summary.lookOnly;
+    L.push(`**${r.name}**: the rule flagged ${lo.length} extra row(s) beyond the confidence rule (${f1(r.summary.flaggedBase)} -> ${f1(r.summary.flagged)} flagged); wrong answers left unflagged: ${r.summary.wrongUnflaggedBase} -> ${r.summary.wrongUnflaggedFull}.`);
+    L.push('');
+    if (lo.length) {
+      L.push('| SKU | Raw name | Chosen (conf) | Runner-up (conf) | Chosen was right? |');
+      L.push('|---|---|---|---|---|');
+      for (const x of lo) L.push(`| ${x.label.sku} | ${x.label.raw_name} | ${x.res.unspsc} ${x.res.unspsc_title} (${x.res.confidence}) | ${x.res.runner_up.unspsc} ${x.res.runner_up.unspsc_title} (${x.res.runner_up.confidence}) | ${x.s.accept ? 'yes (review was not needed)' : 'no (caught)'} |`);
+      L.push('');
+    }
+  }
   L.push('## Label corrections after run 1');
   L.push('');
   L.push('Run 1 (`eval/report-run1.md`) showed the models choosing a more specific commodity than the label for three rows. The labels were corrected; the old code stays as an alternate (`alt` in notes). No other label was changed.');

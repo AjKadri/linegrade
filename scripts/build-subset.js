@@ -152,4 +152,4 @@ function main() {
   for (const [seg, n] of Object.entries(perSegment)) console.log(`  ${seg} ${SEGMENTS[seg]}: ${n}`);
 }
 
-main();
+if (require.main === module) main();

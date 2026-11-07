@@ -4,9 +4,9 @@
 
 > Only `LLM_MODEL` was run this time. Sonnet (`LLM_MODEL_STRONG`) was not re-run after the label corrections; its run-1 results, scored against the old labels, are in `eval/report-run1.md`.
 - Date: 2026-11-07
-- Git commit: n/a (not a git repository or no commits yet)
+- Git commit: c66009c (uncommitted changes)
 - Code list: UNSPSC UNv260801 (c) UNDP, subset of 11378 commodity codes, LLM normalisation, keyword shortlist of 40 (raw + rewritten text), then LLM choice (normalisation model: LLM_MODEL_NORMALIZE, else LLM_MODEL)
-- Flag threshold: confidence < 0.6 (or no code returned)
+- Flag (needs_review): confidence < 0.6, no code, or a look-alike runner-up (same 6-digit class, confidence gap < 0.2; classifier version 2)
 - Rows: 60, concurrency 5
 
 ## Summary (side by side)
@@ -25,15 +25,18 @@
 | UoM valid, PayPal (as returned by model) | 100.0% |
 | UoM valid after repair (what the app would send) | BT 100.0%, PP 100.0% |
 | UoM equals label, Braintree / PayPal (56 rows with a label) | 100.0% / 100.0% |
-| Flagged share (confidence < 0.6 or no code) | 11.7% (7/60) |
+| Flagged share, confidence rule only (< 0.6 or no code) | 11.7% (7/60) |
+| Flagged share, + look-alike rule (used for targets) | 11.7% (7/60) |
+| Wrong answers left unflagged: confidence rule only / + look-alike rule | 0 / 0 |
+| Accuracy of unflagged rows (acceptable): confidence rule only / + look-alike rule | 100.0% / 100.0% |
 | Accuracy on unflagged rows: exact primary | 100.0% (n=53) |
 | Accuracy on unflagged rows: exact acceptable | 100.0% |
 | Accuracy on unflagged rows: class level primary | 100.0% |
 | Wrong answers with confidence > 0.85 | 0 |
-| Cost, 60 rows (normalise + classify calls) | $0.0221 |
-| Cost per row | $0.00037 |
-| Tokens in / out | 136956 / 16786 |
-| Time, 60 rows (wall clock) | 42 s |
+| Cost, 60 rows (normalise + classify calls) | $0.0254 |
+| Cost per row | $0.00042 |
+| Tokens in / out | 144662 / 21957 |
+| Time, 60 rows (wall clock) | 44 s |
 | Failed calls / description fallbacks | 0 / 0 |
 
 ## Targets
@@ -46,6 +49,12 @@
 | Flagged rows <= 25% | PASS |
 
 Definitions: *primary* = `expected_unspsc`; *acceptable* also counts the `alt` code written in the notes. A row labelled `NONE` counts as correct if the classifier returns no code or flags the row (confidence < 0.6). "Wrong" for the confidence check means not acceptable at 8 digits. UoM validity is checked against the allowed Braintree set (EA, BX, PK, CS, LB, KG, LTR) and the PayPal tested set (EACH, BOX, PACK, CASE, UNIT, POUND, KILOGRAM, LITER, KGM, LTR, ITM).
+
+## Look-alike rule: effect on this eval
+
+The model also returns a runner-up code with its own confidence. A row becomes `needs_review` when the runner-up is in the same 6-digit class and the gap is under 0.2. The rule is general and was not tuned per row. Both flag counts below come from the same run, so they differ only by the rule. The prompt also changed (it now asks for the runner-up), so this run is not directly comparable with earlier ones.
+
+**LLM_MODEL**: the rule flagged 0 extra row(s) beyond the confidence rule (11.7% -> 11.7% flagged); wrong answers left unflagged: 0 -> 0.
 
 ## Label corrections after run 1
 
