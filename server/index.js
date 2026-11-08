@@ -190,7 +190,7 @@ function createApp() {
   // plus the fee ESTIMATE for that order from data/rates.json.
   app.get('/api/readiness', (req, res) => {
     const { meta, items, source } = store.read();
-    const orders = Object.entries(ledger.read()).filter(([, v]) => v.status === 'charged');
+    const orders = store.sessionOrders(ledger.read(), store.getSessionStart()); // this session only (since server start or reset)
     let request = null; let refusal = null;
     try {
       request = enrichSale({ ...parseOrder(DEMO_ORDER), orderId: 'READINESS-DEMO' }, { catalogPath: store.activePath() });
@@ -201,7 +201,7 @@ function createApp() {
     const rd = request ? orderReadiness(request) : null;
     res.json({
       synthetic: true, sandbox: true, source, counts: store.counts(items), modelLabel: prettyModel(meta.model),
-      level3Orders: orders.length,
+      level3Orders: orders.length, sessionStart: store.getSessionStart(),
       lastOrder: orders.length ? { orderId: orders[orders.length - 1][0], transactionId: orders[orders.length - 1][1].transactionId, amount: orders[orders.length - 1][1].amount } : null,
       demoOrder: { ok: !!request, amount: request ? request.amount : null, refusal },
       order: rd ? { before: validationView(rd.before), after: validationView(rd.after) } : null,

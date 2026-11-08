@@ -50,7 +50,16 @@ function estimateFeeDifference(amountUsd, rates = loadRates()) {
   const diffs = scenarios.map((s) => s.differenceCents);
   const low = Math.min(...diffs); const high = Math.max(...diffs);
   const reference = scenarios.find((s) => s.edge === 'reference') || scenarios[0];
+  const refDef = rates.scenarios.find((s) => s.id === reference.id);
+  const std = byId[refDef.standard]; const p3 = byId[refDef.product3];
   return {
+    // The headline: the percentage-point gap, from the reference scenario (purchasing/corporate, card-not-present fallback).
+    // Both rates carry the same fixed fee, so the gap is the percentage alone.
+    rateDifference: {
+      scenario: reference.id, label: reference.label,
+      pct: Math.round((std.percent - p3.percent) * 100) / 100,
+      standardPct: std.percent, product3Pct: p3.percent, standardFixed: std.fixed_usd, product3Fixed: p3.fixed_usd,
+    },
     label: 'ESTIMATE',
     amount: usd(amountC),
     range: { low: usd(low), high: usd(high) },
@@ -66,4 +75,9 @@ function estimateFeeDifference(amountUsd, rates = loadRates()) {
   };
 }
 
-module.exports = { loadRates, validateRates, estimateFeeDifference, RATES_PATH };
+/** Yearly interchange difference (USD, whole dollars) for a yearly card volume. ESTIMATE: assumes all volume is on qualifying cards. */
+function yearlyEstimate(volumeUsd, pct) {
+  return Math.round((Number(volumeUsd) * pct) / 100);
+}
+
+module.exports = { loadRates, validateRates, estimateFeeDifference, yearlyEstimate, RATES_PATH };

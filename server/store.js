@@ -16,7 +16,18 @@ function ensureSession() {
   return SESSION;
 }
 
-function reset() { fs.rmSync(SESSION, { force: true }); }
+// A "session" starts when the server starts or when the demo is reset. Orders are counted from then on.
+let sessionStart = new Date().toISOString();
+const getSessionStart = () => sessionStart;
+
+function reset() { fs.rmSync(SESSION, { force: true }); sessionStart = new Date().toISOString(); }
+
+/** Charged orders in a ledger object that were started at or after `sinceIso`, oldest first. */
+function sessionOrders(ledgerObj, sinceIso) {
+  return Object.entries(ledgerObj)
+    .filter(([, v]) => v.status === 'charged' && (v.started_at || v.updated_at || '') >= sinceIso)
+    .sort((a, b) => (a[1].started_at || a[1].updated_at).localeCompare(b[1].started_at || b[1].updated_at));
+}
 
 function read() {
   const parsed = JSON.parse(fs.readFileSync(activePath(), 'utf8'));
@@ -31,4 +42,4 @@ function counts(items) {
   return c;
 }
 
-module.exports = { activePath, ensureSession, reset, read, counts, source, FROZEN, SESSION };
+module.exports = { getSessionStart, sessionOrders, activePath, ensureSession, reset, read, counts, source, FROZEN, SESSION };

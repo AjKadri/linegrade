@@ -357,6 +357,10 @@ table.t.fixed td { overflow-wrap: anywhere; }
 .checks3 th { text-align: left; font: 500 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .checks3 td { padding: 9px 12px; border-bottom: 1px solid var(--line); }
 .checks3 td.c { text-align: center; font-family: var(--mono); }
-.fee-main { font: 500 56px/1 var(--mono); letter-spacing: -0.03em; }
+.fee-main { font: 500 44px/1.05 var(--mono); letter-spacing: -0.03em; }
 @media (max-width: 1000px) { .hero-grid, .ba { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .tick.draw { animation: none !important; } .print-in, .pv-raw, .pv-out > * { animation: none !important; } }
+
+/* yearly volume slider */
+.range { width: 100%; margin: 10px 0 2px; accent-color: var(--stub); height: 24px; }
+.vol { max-width: 760px; }

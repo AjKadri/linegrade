@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { loadRates, validateRates, estimateFeeDifference } = require('../src/fees');
+const { loadRates, validateRates, estimateFeeDifference, yearlyEstimate } = require('../src/fees');
 
 test('data/rates.json: every rate cites a source with an https URL and dates', () => {
   const r = loadRates();
@@ -31,4 +31,20 @@ test('fee estimate for the $958.05 demo order, computed in cents and labelled ES
   assert.deepStrictEqual(e.range, { low: '2.40', high: '11.49' });
   assert.strictEqual(e.isRange, true);
   assert.ok(e.conflicts.length > 0 && e.excluded.length > 0);
+});
+
+test('headline rate difference comes from rates.json: 2.70% fallback minus 1.75% Product 3 = 0.95 points', () => {
+  const e = estimateFeeDifference('958.05');
+  assert.strictEqual(e.rateDifference.pct, 0.95);
+  assert.strictEqual(e.rateDifference.scenario, 'purchasing_corporate_cnp');
+  assert.strictEqual(e.rateDifference.standardFixed, e.rateDifference.product3Fixed); // the fixed fee cancels
+  const r = JSON.parse(JSON.stringify(loadRates()));
+  r.rates.find((x) => x.id === 'pc_cnp').percent = 2.5; // change the table, the headline follows
+  assert.strictEqual(estimateFeeDifference('100.00', r).rateDifference.pct, 0.75);
+});
+
+test('yearly estimate = volume x rate difference, over the slider range $50k to $5M', () => {
+  assert.strictEqual(yearlyEstimate(500000, 0.95), 4750);
+  assert.strictEqual(yearlyEstimate(50000, 0.95), 475);
+  assert.strictEqual(yearlyEstimate(5000000, 0.95), 47500);
 });

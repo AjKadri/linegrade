@@ -3,16 +3,27 @@ import { api } from '../api.js';
 import { Button, Chip, Footer, Hud, LineItemBand, SectionLabel, money } from '../ui.jsx';
 import { useCountUp } from '../hooks.js';
 
+// Slider position 0..100 maps logarithmically to $50k..$5M, rounded to a tidy step. Default 50 = $500k.
+const volumeAt = (t) => {
+  const raw = 50000 * 100 ** (t / 100);
+  const step = raw < 500000 ? 5000 : raw < 2000000 ? 25000 : 50000;
+  return Math.round(raw / step) * step;
+};
+const money0 = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+
 const mark = (status) => (status === 'pass' ? <span className="pass">PASS</span> : status === 'fail' ? <span className="failt">FAIL</span> : <span className="muted">—</span>);
 
 export default function Readiness({ state, onRestart }) {
   const [data, setData] = useState(null);
+  const [t, setT] = useState(50);
   useEffect(() => { api.readiness().then(setData).catch(() => setData(null)); }, []);
   const c = data?.counts;
   const after = data?.order?.after;
   const before = data?.order?.before;
   const score = useCountUp(after?.score ?? c?.score ?? 0, { enabled: !!data });
   const fee = data?.fee;
+  const volume = volumeAt(t);
+  const yearly = fee ? (volume * fee.rateDifference.pct) / 100 : 0; // ESTIMATE: all volume on qualifying cards
 
   return (
     <>
@@ -81,30 +92,58 @@ export default function Readiness({ state, onRestart }) {
           <div className="card-b">
             {fee ? (
               <>
-                <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Interchange difference on the {money(fee.amount)} order: Level 3 (Commercial Product 3) vs standard</div>
+                <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Visa purchasing / corporate card: Level 3 (Commercial Product 3) vs the card-not-present fallback</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', margin: '10px 0 6px' }}>
-                  <div className="fee-main" aria-label={`Estimated fee difference ${fee.range.low} to ${fee.range.high} dollars`}>{fee.isRange ? `$${fee.range.low} – $${fee.range.high}` : `$${fee.range.low}`}</div>
+                  <div className="fee-main" data-testid="fee-headline" aria-label={`Estimated rate difference ${fee.rateDifference.pct} percent back on purchasing-card sales`}>≈ {fee.rateDifference.pct.toFixed(2)}% back on purchasing-card sales</div>
                   <Chip kind="estimate" />
                 </div>
-                <p style={{ fontSize: 13, maxWidth: 760 }}>
-                  For a Visa purchasing or corporate card on the card-not-present fallback: <b className="mono">${fee.reference.difference}</b>.
-                  The range reflects that the sandbox card is only flagged &quot;commercial&quot;, so its Visa product is unknown.
+                <p style={{ fontSize: 13, maxWidth: 780 }}>
+                  {fee.rateDifference.standardPct.toFixed(2)}% + ${fee.rateDifference.standardFixed.toFixed(2)} on the standard fallback, {fee.rateDifference.product3Pct.toFixed(2)}% + ${fee.rateDifference.product3Fixed.toFixed(2)} on Commercial Product 3. The fixed ${fee.rateDifference.product3Fixed.toFixed(2)} is the same in both, so the gap is the percentage alone.
                 </p>
 
-                <div className="navy" style={{ marginTop: 18, overflowX: 'auto' }}>
-                  <table className="checks3" style={{ color: '#ede8e8', minWidth: 640 }}>
-                    <thead><tr><th style={{ color: '#a9acd8' }}>Card and fallback</th><th style={{ color: '#a9acd8' }}>Standard</th><th style={{ color: '#a9acd8' }}>Product 3 (Level 3)</th><th style={{ color: '#a9acd8', textAlign: 'right' }}>Difference · ESTIMATE</th></tr></thead>
-                    <tbody>
-                      {fee.scenarios.map((sc) => (
-                        <tr key={sc.id}>
-                          <td style={{ borderColor: '#23265a' }}>{sc.label}</td>
-                          <td className="mono" style={{ borderColor: '#23265a' }}>{sc.standard.rate} = ${sc.standard.fee}</td>
-                          <td className="mono" style={{ borderColor: '#23265a' }}>{sc.product3.rate} = ${sc.product3.fee}</td>
-                          <td className="mono" style={{ borderColor: '#23265a', textAlign: 'right' }}>${sc.difference}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="vol" style={{ marginTop: 22 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
+                    <label htmlFor="volume" className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Yearly business-card volume</label>
+                    <span className="mono" style={{ fontSize: 20 }} data-testid="volume-value">{money0(volume)}</span>
+                  </div>
+                  <input id="volume" className="range" type="range" min="0" max="100" step="1" value={t} onChange={(e) => setT(Number(e.target.value))} aria-valuetext={money0(volume)} />
+                  <div className="mono muted" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><span>$50k</span><span>$5M</span></div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginTop: 14 }}>
+                    <span className="mono" style={{ fontSize: 40, letterSpacing: '-0.02em' }} data-testid="yearly-value" aria-live="polite">≈ {money0(yearly)}</span>
+                    <span className="mono muted" style={{ fontSize: 12 }}>A YEAR</span>
+                    <Chip kind="estimate" />
+                  </div>
+                  <p className="mono muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.7, letterSpacing: '0.03em' }}>
+                    PURCHASING / CORPORATE CARD CASE. ASSUMES ALL VOLUME IS ON QUALIFYING CARDS WITH VERIFIED LEVEL 3 DATA. INTERCHANGE ONLY, FOR INTERCHANGE-PLUS MERCHANTS. NOT SAVINGS ACHIEVED.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: 26, paddingTop: 18, borderTop: '1px dashed var(--line-strong)' }}>
+                  <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Detail: the {money(fee.amount)} demo order, by card type</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', margin: '8px 0 4px' }}>
+                    <div className="mono" style={{ fontSize: 28, letterSpacing: '-0.02em' }} data-testid="fee-range" aria-label={`Estimated fee difference ${fee.range.low} to ${fee.range.high} dollars`}>{fee.isRange ? `$${fee.range.low} – $${fee.range.high}` : `$${fee.range.low}`}</div>
+                    <Chip kind="estimate" />
+                  </div>
+                  <p style={{ fontSize: 13, maxWidth: 760 }}>
+                    For a purchasing or corporate card on the card-not-present fallback: <b className="mono">${fee.reference.difference}</b>.
+                    The range reflects that the sandbox card is only flagged &quot;commercial&quot;, so its Visa product is unknown.
+                  </p>
+
+                  <div className="navy" style={{ marginTop: 14, overflowX: 'auto' }}>
+                    <table className="checks3" style={{ color: '#ede8e8', minWidth: 640 }}>
+                      <thead><tr><th style={{ color: '#a9acd8' }}>Card and fallback</th><th style={{ color: '#a9acd8' }}>Standard</th><th style={{ color: '#a9acd8' }}>Product 3 (Level 3)</th><th style={{ color: '#a9acd8', textAlign: 'right' }}>Difference · ESTIMATE</th></tr></thead>
+                      <tbody>
+                        {fee.scenarios.map((sc) => (
+                          <tr key={sc.id}>
+                            <td style={{ borderColor: '#23265a' }}>{sc.label}</td>
+                            <td className="mono" style={{ borderColor: '#23265a' }}>{sc.standard.rate} = ${sc.standard.fee}</td>
+                            <td className="mono" style={{ borderColor: '#23265a' }}>{sc.product3.rate} = ${sc.product3.fee}</td>
+                            <td className="mono" style={{ borderColor: '#23265a', textAlign: 'right' }}>${sc.difference}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <p className="mono muted" style={{ fontSize: 11, marginTop: 14, lineHeight: 1.7 }}>
