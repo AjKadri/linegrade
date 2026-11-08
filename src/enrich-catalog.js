@@ -20,7 +20,7 @@ const path = require('node:path');
 
 try { process.loadEnvFile(path.join(__dirname, '..', '.env')); } catch { /* env may come from the shell */ }
 
-const { classify, loadIndex, BRAINTREE_UOM, BT_TO_PP, CLASSIFIER_VERSION } = require('./classify');
+const { classify, loadIndex, codeListKind, BRAINTREE_UOM, BT_TO_PP, CLASSIFIER_VERSION } = require('./classify');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_INPUT = path.join(ROOT, 'data', 'demo-catalog.csv');
@@ -129,7 +129,21 @@ function itemFromResult(row, res, error) {
   };
 }
 
-async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, force = false, log = console.log, onProgress = () => {} } = {}) {
+/** The AI provider could not be used (network, timeout, auth, credit). Nothing was written. */
+class ProviderUnavailableError extends Error {
+  constructor(message) { super(message); this.name = 'ProviderUnavailableError'; }
+}
+
+/**
+ * @param {object} [o]
+ * @param {boolean} [o.force]  re-classify every unlocked row
+ * @param {'record'|'abort'} [o.onProviderError]  record: a failed call marks the row needs_review (CLI default).
+ *   abort: the first failed call stops the run, throws ProviderUnavailableError and writes NOTHING (used by the server).
+ * @param {() => boolean} [o.shouldStop]  checked before each row; true stops the run early (budget cap, client left).
+ *   Rows not reached keep their earlier classification.
+ * @param {(usd:number) => void} [o.onCost]  called with the cost of each classified row
+ */
+async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, force = false, log = console.log, onProgress = () => {}, onProviderError = 'record', shouldStop = () => false, onCost = () => {} } = {}) {
   const rows = readCatalog(input);
   const existing = readExisting(output);
   const plan = planEnrichment(rows, existing, { force });
@@ -141,6 +155,7 @@ async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, f
     else items[row.sku] = { ...existing[row.sku], unit_price: row.unit_price }; // price is not a classification input
   }
   for (const sku of plan.removed) items[sku] = existing[sku];
+  if (todo.length && codeListKind() === 'none') throw Object.assign(new Error('Cannot classify: the UNSPSC list is not installed on this machine (see NOTICE). Nothing was changed.'), { code: 'NO_CODE_LIST' });
   // Progress hook (used by the web UI): the plan first, then one event per row as it becomes ready.
   onProgress({ type: 'plan', total: rows.length, toClassify: todo.length, actions: plan.actions });
   for (const row of rows) {
@@ -149,24 +164,35 @@ async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, f
   }
 
   let next = 0; let cost = 0; let costKnown = true; let model = process.env.LLM_MODEL;
+  let stoppedEarly = false; let providerError = null; let classifiedCount = 0;
   async function worker() {
     while (next < todo.length) {
+      if (providerError) return;
+      if (shouldStop()) { stoppedEarly = true; return; }
       const row = todo[next++];
       let res; let error = null;
       try { res = await classify(row.raw_name, { sku: row.sku }); } catch (e) {
+        if (onProviderError === 'abort') { providerError = e; return; }
         if (/^HTTP 40[13]/.test(e.message)) throw e; // credentials/credit problem: stop everything
         error = e.message;
       }
       if (res) {
         const u = res.diagnostics.usage;
-        if (u.cost_usd == null) costKnown = false; else cost += u.cost_usd;
+        if (u.cost_usd == null) costKnown = false; else { cost += u.cost_usd; onCost(u.cost_usd); }
         model = res.diagnostics.model;
       }
       items[row.sku] = itemFromResult(row, res, error);
+      classifiedCount++;
       onProgress({ type: 'item', sku: row.sku, action: 'classify', reason: plan.actions[row.sku].reason, item: items[row.sku] });
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker));
+  if (providerError) throw new ProviderUnavailableError(providerError.message); // nothing has been written
+  // Rows a stopped run never reached keep what they had (or a clear placeholder if they were new).
+  for (const row of todo) {
+    if (items[row.sku]) continue;
+    items[row.sku] = existing[row.sku] || itemFromResult(row, null, 'NOT CLASSIFIED: the run was stopped before this row');
+  }
 
   const ordered = Object.fromEntries([...rows.map((r) => r.sku), ...plan.removed].map((sku) => [sku, items[sku]]));
   const counts = { ok: 0, needs_review: 0, excluded: 0, approved: 0 };
@@ -183,7 +209,7 @@ async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, f
       generated_at: new Date().toISOString(),
       rows: rows.length,
       counts,
-      last_run: { classified: todo.length, reused: rows.length - todo.length - Object.values(plan.actions).filter((a) => a.action === 'locked').length, locked: Object.values(plan.actions).filter((a) => a.action === 'locked').length, cost_usd: costKnown ? Number(cost.toFixed(6)) : null },
+      last_run: { stopped_early: stoppedEarly, classified: classifiedCount, reused: rows.length - todo.length - Object.values(plan.actions).filter((a) => a.action === 'locked').length, locked: Object.values(plan.actions).filter((a) => a.action === 'locked').length, cost_usd: costKnown ? Number(cost.toFixed(6)) : null },
     },
     items: ordered,
   };
@@ -198,6 +224,15 @@ async function enrichCatalog({ input = DEFAULT_INPUT, output = DEFAULT_OUTPUT, f
   return out;
 }
 
+/** code -> { title } from rows already in the catalog (chosen codes and runner-ups). */
+function codeFromCatalog(parsed, code) {
+  for (const it of Object.values(parsed.items)) {
+    if (it.unspsc === code && it.unspsc_title) return { title: it.unspsc_title };
+    if (it.runner_up && it.runner_up.unspsc === code && it.runner_up.unspsc_title) return { title: it.runner_up.unspsc_title };
+  }
+  return null;
+}
+
 /** Seller approval: locks the row. Optional overrides: code, uom (Braintree short code), description. */
 function approveSku(sku, overrides = {}, { output = DEFAULT_OUTPUT } = {}) {
   const parsed = JSON.parse(fs.readFileSync(output, 'utf8'));
@@ -205,8 +240,11 @@ function approveSku(sku, overrides = {}, { output = DEFAULT_OUTPUT } = {}) {
   if (!item) throw new Error(`SKU ${sku} is not in ${path.relative(process.cwd(), output)}`);
   const changes = [];
   if (overrides.code) {
-    const entry = loadIndex().byCode.get(overrides.code);
-    if (!entry) throw new Error(`Code ${overrides.code} is not in the code list (data/unspsc-subset.csv)`);
+    // Without the licensed list (hosted demo) only codes already present in this catalog can be chosen.
+    let entry = null;
+    if (codeListKind() === 'full') entry = loadIndex().byCode.get(overrides.code);
+    else entry = codeFromCatalog(parsed, overrides.code);
+    if (!entry) throw new Error(codeListKind() === 'full' ? `Code ${overrides.code} is not in the code list.` : `Code ${overrides.code} cannot be checked here: the UNSPSC list is not installed on this demo. Pick a code already used in the catalog, or keep the suggested one.`);
     if (item.unspsc !== overrides.code) changes.push(`code ${item.unspsc || 'none'} -> ${overrides.code}`);
     item.model_unspsc = item.model_unspsc || item.unspsc;
     item.unspsc = overrides.code; item.unspsc_title = entry.title;
@@ -248,7 +286,7 @@ function unapproveSku(sku, { output = DEFAULT_OUTPUT } = {}) {
   return item;
 }
 
-module.exports = { enrichCatalog, planEnrichment, approveSku, excludeSku, unapproveSku, readCatalog, DEFAULT_OUTPUT, DEFAULT_INPUT };
+module.exports = { ProviderUnavailableError, enrichCatalog, planEnrichment, approveSku, excludeSku, unapproveSku, readCatalog, DEFAULT_OUTPUT, DEFAULT_INPUT };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);

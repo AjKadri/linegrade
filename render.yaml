@@ -1,0 +1,48 @@
+# Render Blueprint: LineGrade as ONE web service (the API serves the built UI).
+# No secret values live in this file: every `sync: false` variable is entered in the Render dashboard.
+# Plan: free ($0). The free tier sleeps after 15 idle minutes (see docs/OPERATIONS.md).
+services:
+  - type: web
+    name: linegrade
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm --prefix web ci --include=dev && npm --prefix web run build
+    startCommand: node server/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      # Secrets: set in the dashboard, never here.
+      - key: LLM_API_KEY
+        sync: false
+      - key: BT_MERCHANT_ID
+        sync: false
+      - key: BT_PUBLIC_KEY
+        sync: false
+      - key: BT_PRIVATE_KEY
+        sync: false
+      - key: ADMIN_TOKEN        # optional: lets you switch live AI off without a redeploy
+        sync: false
+      # Not secret.
+      - key: LLM_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: LLM_MODEL
+        value: anthropic/claude-haiku-5.5
+      - key: LIVE_AI             # "off" turns the live AI re-run off (the frozen-catalog replay keeps working)
+        value: "on"
+      - key: LLM_DAILY_CAP_USD
+        value: "2"
+      - key: MAX_RERUNS_PER_SESSION
+        value: "2"
+      - key: MAX_RERUNS_PER_DAY
+        value: "30"
+      - key: MAX_PAYMENTS_PER_SESSION
+        value: "5"
+      - key: MAX_PAYMENTS_PER_DAY
+        value: "200"
+      - key: SESSION_IDLE_MIN
+        value: "120"

@@ -36,8 +36,11 @@ async function main() {
   };
   const noHScroll = async (label) => check(`${label}: no horizontal overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && [...document.querySelectorAll('.card, .tscroll')].every((el) => el.scrollWidth <= el.clientWidth + 1 || getComputedStyle(el).overflowX === 'auto')));
 
-  await api('reset');
-  await page.goto(BASE);
+  // A fresh browser context is a fresh session: nothing to reset. A sleeping free-tier server can take about a minute.
+  const t0 = Date.now();
+  for (;;) { try { if ((await fetch(`${BASE}/health`)).ok) break; } catch { /* asleep or starting */ } if (Date.now() - t0 > 240000) throw new Error('server did not wake up in 4 minutes'); await new Promise((r) => setTimeout(r, 2000)); }
+  check('Server answers /health', true, `${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  await page.goto(BASE, { timeout: 120000 });
   await page.waitForSelector('.preloader', { state: 'detached', timeout: 5000 });
   check('Landing: SYNTHETIC DATA chip in top bar', await page.locator('.topbar .chip.synthetic').isVisible());
   check('Landing: headline', (await page.locator('h1').innerText()).toLowerCase().includes('invoice-grade card data for b2b sellers'));
@@ -58,6 +61,9 @@ async function main() {
   await page.waitForTimeout(400);
   await shot('02-enrich.png', false);
 
+  const lim = await page.getByTestId('ai-limits').innerText();
+  const noList = (await (await fetch(`${BASE}/health`)).json()).codeList === 'none'; // hosted case: live AI is off by design
+  check(noList ? 'Enrich: live AI off, replay only (no code list)' : 'Enrich: live AI re-runs left shown (2 of 2)', noList ? /REPLAY ONLY/.test(lim) : /RE-RUNS LEFT THIS SESSION: 2 OF 2/.test(lim));
   await page.getByRole('button', { name: /continue to review/i }).click();
   await page.waitForSelector('.ag-row');
   const needs0 = Number(await page.locator('.stats .stat .n').first().innerText());
@@ -103,6 +109,7 @@ async function main() {
   await shot('04c-order-with-linegrade.png', false);
   await noHScroll('Order (before pay)');
 
+  check('Order: sandbox payments left shown (5 of 5)', /PAYMENTS LEFT THIS SESSION: 5 OF 5/.test(await page.getByTestId('payments-left').innerText()));
   const payBtn = page.getByRole('button', { name: /pay .*958\.05.* with braintree sandbox/i });
   await payBtn.click();
   await page.waitForSelector('[data-testid="txn-id"]', { timeout: 30000 });
@@ -112,6 +119,7 @@ async function main() {
   const bBtn = await page.getByRole('button', { name: /^Paid/ }).boundingBox();
   const bStamp = await page.locator('.stamp').boundingBox();
   check('Order: PASS stamp + transaction ID directly under the Pay button', /PASS \d+\/\d+/.test(stamp) && bStamp.y > bBtn.y && bStamp.y - (bBtn.y + bBtn.height) < 140, `${stamp.replace(/\s+/g, ' ')}, transaction ${txn}`);
+  check('Order: payments left drops to 4 of 5 after one sale', /PAYMENTS LEFT THIS SESSION: 4 OF 5/.test(await page.getByTestId('payments-left').innerText()));
   check('Order: the 11 checks are collapsed behind "Show all checks"', (await page.locator('table[aria-label="All read-back checks"]').count()) === 0 && await page.getByRole('button', { name: /show all checks/i }).isVisible());
   await page.waitForTimeout(1500);
   await shot('04-order-paid.png');
@@ -168,6 +176,14 @@ async function main() {
   check('Reduced motion: enrichment list appears at once (40 / 40)', (await rp.locator('.counter').innerText()).trim() === '40 / 40');
   const anim = await rp.evaluate(() => ['.orb', '.progress i', '.stream-row'].map((sel) => getComputedStyle(document.querySelector(sel)).animationName));
   check('Reduced motion: animations are off', anim.every((n) => n === 'none'), anim.join(','));
+  const health = await (await fetch(`${BASE}/health`)).json();
+  if (health.codeList === 'none') {
+    // Hosted case: no licensed UNSPSC list. Replay must be labelled, Re-run must be off with the note.
+    await rp.waitForSelector('[data-testid="ai-limits"]');
+    check('No code list: Re-run AI is disabled', await rp.getByRole('button', { name: /^Re-run AI/ }).isDisabled());
+    check('No code list: note says live AI runs locally, demo replays a saved run', /LIVE AI RUNS LOCALLY WITH THE LICENSED UNSPSC LIST; THIS DEMO REPLAYS A SAVED RUN/i.test(await rp.locator('[data-testid="ai-limits"]').innerText()), (await rp.locator('[data-testid="ai-limits"]').innerText()).slice(0, 120));
+    check('No code list: replay is labelled REPLAY', /REPLAY/.test(await rp.locator('main').innerText()));
+  }
   await rp.goto(`${BASE}/?screen=readiness`);
   await rp.waitForSelector('.score');
   const instant = Number(await rp.locator('.score').innerText());

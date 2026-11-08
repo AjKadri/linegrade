@@ -1,0 +1,21 @@
+LineGrade third-party notice
+
+UNSPSC (c) United Nations Development Programme (UNDP)
+-------------------------------------------------------
+The United Nations Standard Products and Services Code (UNSPSC) is copyright
+UNDP. The UNSPSC code list is NOT included in this repository and is NOT
+covered by this project's MIT licence. Its use is governed by UNDP's own terms.
+
+Get it yourself:
+  1. Download the UNSPSC English workbook from https://www.unspsc.org
+     (you may need to register and accept UNDP's terms).
+  2. Save it as data/unspsc_english.xlsx.
+  3. Build the local search list:  node scripts/build-subset.js
+     This writes data/unspsc-subset.csv. Both files are gitignored.
+     (Needs the `unzip` binary; no npm dependencies.)
+
+Without the list, LineGrade still runs: it replays a saved, labelled run of a
+SYNTHETIC catalog. Live AI re-runs and the full code search need the list and
+are disabled. The saved catalog (data/enriched-catalog.json) records, for the
+codes the AI chose, the code and the title the classifier returned for it.
+Those titles are UNDP's and remain subject to UNDP's terms.

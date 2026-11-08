@@ -12,13 +12,13 @@ function Panel({ item, onChanged, busy, setBusy, setError }) {
   const [form, setForm] = useState({ code: '', title: '', uom: 'EA', description: '' });
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
+  const [codeNote, setCodeNote] = useState(null);
 
   useEffect(() => { setEdit(false); setResults([]); }, [item?.sku]);
   useEffect(() => {
     if (!edit) return undefined;
     const t = setTimeout(async () => {
-      if (q.trim().length < 2) { setResults([]); return; }
-      try { setResults((await api.codes(q)).results); } catch { setResults([]); }
+      try { const r = await api.codes(q); setResults(r.results); setCodeNote(r.note || null); } catch { setResults([]); }
     }, 220);
     return () => clearTimeout(t);
   }, [q, edit]);
@@ -71,6 +71,7 @@ function Panel({ item, onChanged, busy, setBusy, setError }) {
         {edit && (
           <>
             <label className="field"><span>Find a code</span><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. exam gloves" /></label>
+            {codeNote && <p className="mono muted" data-testid="code-note" style={{ fontSize: 11 }}>{codeNote.toUpperCase()}</p>}
             {results.length > 0 && (
               <div className="result-list" role="listbox" aria-label="Matching UNSPSC codes">
                 {results.map((r) => (

@@ -11,3 +11,7 @@ data/ledger.json
 eval/report.partial.md
 data/session-catalog.json
 web/dist/
+data/sessions/
+data/usage.json
+data/unspsc-demo-subset.csv
+eval/labels-review.md

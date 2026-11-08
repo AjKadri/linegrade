@@ -15,6 +15,15 @@ const ledger = require('./ledger');
 try { process.loadEnvFile(path.join(__dirname, '..', '.env')); } catch { /* env may come from the shell */ }
 
 const COMMERCIAL_TEST_CARD = '4009040000000009'; // Braintree docs: Commercial = Yes
+// Errors that prove the request never left this machine (nothing can have been charged).
+const NEVER_SENT = new Set(['ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH']);
+const neverSent = (e) => NEVER_SENT.has(e && (e.code || (e.cause && e.cause.code) || (e.errno && e.syscall && e.code)));
+
+// Test-only failure injection, honoured only when ALLOW_CHAOS=1 (never set in production):
+//   CHAOS_BRAINTREE=down  every Braintree call fails as if the network were unreachable
+const chaosDown = () => process.env.ALLOW_CHAOS === '1' && process.env.CHAOS_BRAINTREE === 'down';
+const chaosError = () => Object.assign(new Error('connect ECONNREFUSED (simulated: Braintree unavailable)'), { code: 'ECONNREFUSED', type: 'simulated' });
+
 const OK_STATUSES = ['authorized', 'submitted_for_settlement', 'settling', 'settled', 'settlement_pending'];
 
 function gateway() {
@@ -27,6 +36,7 @@ function gateway() {
 
 // Ask Braintree whether a sale with this orderId already exists.
 async function findByOrderId(gw, orderId) {
+  if (chaosDown()) throw chaosError();
   const stream = gw.transaction.search((s) => { s.orderId().is(orderId); });
   const found = [];
   await new Promise((resolve, reject) => {
@@ -92,7 +102,11 @@ async function chargeRequest(request, opts = {}) {
 
   if (entry && entry.status === 'unknown') {
     log(`      Ledger says a previous attempt got no answer (${entry.updated_at}). Asking Braintree before doing anything else...`);
-    const found = await findByOrderId(gw, orderId);
+    let found;
+    try { found = await findByOrderId(gw, orderId); } catch (e) {
+      log(`Cannot reach Braintree to check (${e.message}). Not charging again until it can be checked.`);
+      return { outcome: 'braintree_unavailable', orderId, retrySafe: true, charged: 'unknown', error: String(e.message) };
+    }
     if (found.length) {
       entry = ledger.set(orderId, { status: 'charged', transactionId: found[0].id, amount: found[0].amount, reconciled: true }, ledgerFile);
       log(`      Found sale ${found[0].id} at Braintree: ledger corrected to charged.`);
@@ -109,7 +123,11 @@ async function chargeRequest(request, opts = {}) {
   }
   if (entry && entry.status === 'pending') {
     log(`\nBLOCKED: ledger shows orderId ${orderId} as "pending" (a previous run stopped mid-sale). Not charging again until it is resolved:`);
-    const found = await findByOrderId(gw, orderId);
+    let found;
+    try { found = await findByOrderId(gw, orderId); } catch (e) {
+      log(`Cannot reach Braintree to check (${e.message}).`);
+      return { outcome: 'braintree_unavailable', orderId, retrySafe: true, charged: 'unknown', error: String(e.message) };
+    }
     if (found.length) {
       ledger.set(orderId, { status: 'charged', transactionId: found[0].id, amount: found[0].amount, reconciled: true }, ledgerFile);
       log(`Braintree has sale ${found[0].id}: ledger corrected to charged. No new sale was created.`);
@@ -128,11 +146,18 @@ async function chargeRequest(request, opts = {}) {
 
   let result;
   try {
+    if (chaosDown()) throw chaosError();
     result = await gw.transaction.sale(sale);
     if (opts.simulateLostResponse) throw Object.assign(new Error('Braintree reply lost'), { type: 'simulated' });
   } catch (e) {
     // No usable answer: the sale may or may not exist. Try to find out right now.
     log(`\nNo answer from Braintree (${e.type || e.name}: ${e.message}).`);
+    if (neverSent(e)) {
+      // The request never left this machine: certain that nothing was charged. Safe to retry at once.
+      ledger.set(orderId, { status: 'failed', error: String(e.message), note: 'Braintree unreachable; request never sent' }, ledgerFile);
+      log('Braintree is unreachable and the request was never sent. Nothing was charged. Ledger status: failed (retrying is safe).');
+      return { outcome: 'braintree_unavailable', orderId, retrySafe: true, charged: false, error: String(e.message) };
+    }
     ledger.set(orderId, { status: 'unknown', error: String(e.message) }, ledgerFile);
     try {
       const found = await findByOrderId(gw, orderId);
@@ -146,7 +171,7 @@ async function chargeRequest(request, opts = {}) {
       return { outcome: 'no_answer_not_charged', orderId, error: String(e.message) };
     } catch (e2) {
       log(`Could not check Braintree either (${e2.message}). Ledger status: UNKNOWN. The next run with this orderId will reconcile before charging.`);
-      return { outcome: 'unknown', orderId, error: String(e2.message) };
+      return { outcome: 'unknown', orderId, retrySafe: true, charged: 'unknown', error: String(e2.message) };
     }
   }
 

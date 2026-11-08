@@ -2,7 +2,7 @@
 //
 //   node src/classify.js "Nitrile glv M 100ct"
 //
-// 1. Keyword shortlist (typo/abbreviation tolerant) over data/unspsc-subset.csv.
+// 1. Keyword shortlist (typo/abbreviation tolerant) over data/unspsc-subset.csv (local only, not in git).
 // 2. LLM (OpenRouter, OpenAI-compatible) picks from the shortlist.
 // 3. Output is validated: codes must exist in the subset, units must be in the allowed sets.
 //
@@ -13,7 +13,10 @@ const path = require('node:path');
 
 try { process.loadEnvFile(path.join(__dirname, '..', '.env')); } catch { /* env may come from the shell */ }
 
-const SUBSET_PATH = path.join(__dirname, '..', 'data', 'unspsc-subset.csv');
+// The UNSPSC list is (c) UNDP and is NOT part of this repo: build it locally (see NOTICE, scripts/build-subset.js).
+// UNSPSC_LIST_PATH only exists so tests can point at a missing file.
+const SUBSET_PATH = process.env.UNSPSC_LIST_PATH || path.join(__dirname, '..', 'data', 'unspsc-subset.csv');
+const codeListKind = () => (fs.existsSync(SUBSET_PATH) ? 'full' : 'none');
 const SHORTLIST_SIZE = 40;
 const FLAG_THRESHOLD = 0.6;
 const MAX_DESCRIPTION = 126; // "under 127 characters"
@@ -116,8 +119,8 @@ function editDistanceLE1(a, b) {
 let INDEX = null;
 function loadIndex() {
   if (INDEX) return INDEX;
-  if (!fs.existsSync(SUBSET_PATH)) throw new Error(`Missing ${SUBSET_PATH}. Run: node scripts/build-subset.js`);
-  const lines = fs.readFileSync(SUBSET_PATH, 'utf8').split('\n').filter(Boolean);
+  if (!fs.existsSync(SUBSET_PATH)) throw Object.assign(new Error('The UNSPSC code list is not installed on this machine, so live classification and code search are unavailable. Build it locally: node scripts/build-subset.js (see NOTICE).'), { code: 'NO_CODE_LIST' });
+  const lines = fs.readFileSync(SUBSET_PATH, 'utf8').split('\n').filter((l) => l && !l.startsWith('#'));
   const entries = lines.slice(1).map((l) => {
     const [code, title, classCode, classTitle] = parseCsvLine(l);
     const ctSeq = tokens(title);
@@ -239,8 +242,10 @@ async function callLLM({ model, messages, signal, maxTokens = 800 }) {
   const key = process.env.LLM_API_KEY;
   if (!key) throw new Error('LLM_API_KEY is not set');
   if (!model) throw new Error('LLM model is not set (LLM_MODEL)');
+  const attempts = Number(process.env.LLM_ATTEMPTS) || 4; // the server lowers these so a dead provider fails fast
+  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS) || 60000;
   let lastErr;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const res = await fetch(`${base}/chat/completions`, {
         method: 'POST',
@@ -250,7 +255,7 @@ async function callLLM({ model, messages, signal, maxTokens = 800 }) {
           response_format: { type: 'json_object' },
           usage: { include: true }, // OpenRouter: returns cost in usage.cost
         }),
-        signal: signal || AbortSignal.timeout(60000),
+        signal: signal || AbortSignal.timeout(timeoutMs),
       });
       if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
@@ -401,7 +406,7 @@ async function classify(rawName, opts = {}) {
   };
 }
 
-module.exports = { classify, normalizeName, shortlist, loadIndex, isLookAlike, BRAINTREE_UOM, PAYPAL_UOM, BT_TO_PP, FLAG_THRESHOLD, LOOKALIKE_GAP, CLASSIFIER_VERSION };
+module.exports = { classify, normalizeName, shortlist, loadIndex, isLookAlike, codeListKind, BRAINTREE_UOM, PAYPAL_UOM, BT_TO_PP, FLAG_THRESHOLD, LOOKALIKE_GAP, CLASSIFIER_VERSION };
 
 if (require.main === module) {
   const name = process.argv.slice(2).join(' ');

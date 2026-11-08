@@ -92,6 +92,31 @@ export function Preloader() {
   );
 }
 
+// Shown only if the server does not answer within about a second and a half (a sleeping free-tier instance
+// takes about a minute to start). Normal loads never see it.
+export function WakeScreen({ awake }) {
+  const [visible, setVisible] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (awake) { setVisible(false); setSeconds(0); return undefined; }
+    const show = setTimeout(() => setVisible(true), 1500);
+    const tick = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => { clearTimeout(show); clearInterval(tick); };
+  }, [awake]);
+  if (awake || !visible) return null;
+  return (
+    <div className="wake" role="status" aria-live="polite" data-testid="wake-screen">
+      <div style={{ color: '#ede8e8', display: 'flex', alignItems: 'center', gap: 12 }}><LogoMark size={44} draw /><span className="wm" style={{ fontSize: 28 }}>linegrade</span></div>
+      <div className="wake-title">WAKING UP THE DEMO</div>
+      <div className="bar wake-bar"><i /></div>
+      <p className="mono" style={{ fontSize: 12, color: '#8a8a85', maxWidth: 420, textAlign: 'center', lineHeight: 1.7 }}>
+        THIS DEMO RUNS ON A FREE SERVER THAT SLEEPS WHEN IDLE. IT USUALLY TAKES ABOUT A MINUTE TO START. THIS PAGE CONTINUES BY ITSELF.
+      </p>
+      <div className="mono" style={{ fontSize: 12, color: '#8a8a85' }}>{seconds} s</div>
+    </div>
+  );
+}
+
 export function Footer() {
   return (
     <footer className="section footer" style={{ paddingBottom: 0 }}>

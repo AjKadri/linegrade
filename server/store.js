@@ -1,37 +1,38 @@
-// Which enriched catalog the API serves. The committed data/enriched-catalog.json stays frozen:
-// the first change (approve, exclude, re-run AI) copies it to data/session-catalog.json (gitignored)
-// and everything after works on that copy. reset() goes back to the frozen file.
+// Per-session catalog store. The committed data/enriched-catalog.json stays frozen. A session's first change
+// (approve, exclude, re-run AI) copies it to <session dir>/catalog.json; everything after works on that copy.
+// reset() goes back to the frozen file and starts a new "order window" for the readiness counter.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { DEFAULT_OUTPUT: FROZEN } = require('../src/enrich-catalog');
 
-const SESSION = path.join(__dirname, '..', 'data', 'session-catalog.json');
-
-const activePath = () => (fs.existsSync(SESSION) ? SESSION : FROZEN);
-const source = () => (fs.existsSync(SESSION) ? 'session' : 'frozen');
-
-function ensureSession() {
-  if (!fs.existsSync(SESSION)) fs.copyFileSync(FROZEN, SESSION);
-  return SESSION;
+/** A store bound to one session object (see sessions.js). Nothing here is shared between sessions. */
+function forSession(session) {
+  const catalogFile = path.join(session.dir, 'catalog.json');
+  const ledgerFile = path.join(session.dir, 'ledger.json');
+  const exists = () => fs.existsSync(catalogFile);
+  return {
+    catalogFile, ledgerFile,
+    activePath: () => (exists() ? catalogFile : FROZEN),
+    source: () => (exists() ? 'session' : 'frozen'),
+    ensureSession() {
+      if (!exists()) { fs.mkdirSync(session.dir, { recursive: true }); fs.copyFileSync(FROZEN, catalogFile); }
+      return catalogFile;
+    },
+    reset() { fs.rmSync(catalogFile, { force: true }); session.start = new Date().toISOString(); },
+    read() {
+      const parsed = JSON.parse(fs.readFileSync(exists() ? catalogFile : FROZEN, 'utf8'));
+      return { meta: parsed.meta, items: Object.values(parsed.items), source: exists() ? 'session' : 'frozen' };
+    },
+    sessionStart: () => session.start,
+  };
 }
-
-// A "session" starts when the server starts or when the demo is reset. Orders are counted from then on.
-let sessionStart = new Date().toISOString();
-const getSessionStart = () => sessionStart;
-
-function reset() { fs.rmSync(SESSION, { force: true }); sessionStart = new Date().toISOString(); }
 
 /** Charged orders in a ledger object that were started at or after `sinceIso`, oldest first. */
 function sessionOrders(ledgerObj, sinceIso) {
   return Object.entries(ledgerObj)
     .filter(([, v]) => v.status === 'charged' && (v.started_at || v.updated_at || '') >= sinceIso)
     .sort((a, b) => (a[1].started_at || a[1].updated_at).localeCompare(b[1].started_at || b[1].updated_at));
-}
-
-function read() {
-  const parsed = JSON.parse(fs.readFileSync(activePath(), 'utf8'));
-  return { meta: parsed.meta, items: Object.values(parsed.items), source: source() };
 }
 
 function counts(items) {
@@ -42,4 +43,4 @@ function counts(items) {
   return c;
 }
 
-module.exports = { getSessionStart, sessionOrders, activePath, ensureSession, reset, read, counts, source, FROZEN, SESSION };
+module.exports = { forSession, sessionOrders, counts, FROZEN };

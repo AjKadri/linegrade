@@ -13,14 +13,19 @@
     "web:build": "npm --prefix web run build",
     "server": "node server/index.js",
     "demo": "npm --prefix web run build && node server/index.js",
-    "screens": "node scripts/screenshots.js"
+    "screens": "node scripts/screenshots.js",
+    "start": "node server/index.js",
+    "build": "npm --prefix web ci --include=dev && npm --prefix web run build",
+    "coldstart": "node scripts/coldstart.js",
+    "check:failures": "node scripts/failure-paths.js",
+    "check:sessions": "node scripts/sessions-check.js"
   },
   "dependencies": {
     "braintree": "^3.0.0",
     "express": "^5.3.0"
   },
   "engines": {
-    "node": ">=20.6"
+    "node": ">=22.12"
   },
   "devDependencies": {
     "playwright-core": "^1.65.0"

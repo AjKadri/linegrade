@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../api.js';
+import { api, ApiError } from '../api.js';
 import { Button, Chip, SectionLabel, money } from '../ui.jsx';
 import { prefersReducedMotion } from '../hooks.js';
 
@@ -56,7 +56,7 @@ function Payoff({ result, paying, onAgain, onNext }) {
     );
   }
 
-  const tone = result.outcome === 'already_charged' ? 'warn' : 'fail';
+  const tone = result.outcome === 'already_charged' || result.outcome === 'braintree_unavailable' || result.outcome === 'unknown' || result.outcome === 'capped' ? 'warn' : 'fail';
   let headline = 'NOT CHARGED';
   let body = (result.messages || []).join(' ');
   if (result.outcome === 'already_charged') {
@@ -70,13 +70,21 @@ function Payoff({ result, paying, onAgain, onNext }) {
     body = result.refused?.message;
   } else if (result.outcome === 'charged_reply_lost') {
     headline = 'SALE WENT THROUGH, REPLY LOST'; body = `Braintree has it as ${result.transactionId}. Do not retry.`;
+  } else if (result.outcome === 'braintree_unavailable') {
+    headline = 'BRAINTREE IS UNAVAILABLE';
+    body = result.charged === false
+      ? 'The request never reached Braintree, so nothing was charged. It is safe to try again.'
+      : 'We could not check whether the earlier attempt went through, so nothing new was sent. Trying again checks Braintree first and cannot charge twice.';
   } else if (result.outcome === 'unknown') {
-    headline = 'RESULT UNKNOWN'; body = 'Braintree could not be checked. The next attempt with this order will reconcile first.';
+    headline = 'BRAINTREE DID NOT ANSWER'; body = 'We could not confirm whether the order went through. It is safe to try again: the next attempt checks Braintree first and cannot charge twice.';
+  } else if (result.outcome === 'capped') {
+    headline = 'LIMIT REACHED'; body = result.message;
   }
   return (
     <div className={`banner ${tone}`} role="alert" style={{ marginTop: 16 }}>
       <div><div className="mono" style={{ fontWeight: 500, letterSpacing: '0.04em' }}>{headline}</div><div style={{ marginTop: 4 }}>{body}</div></div>
       {result.outcome === 'already_charged' && <Button small onClick={onNext}>See readiness</Button>}
+      {(result.outcome === 'braintree_unavailable' || result.outcome === 'unknown') && <Button small variant="secondary" icon="" disabled={paying} onClick={onAgain}>Try again</Button>}
     </div>
   );
 }
@@ -110,7 +118,7 @@ function ReadBack({ result }) {
   );
 }
 
-export default function Order({ catalog, onNext, onReview }) {
+export default function Order({ catalog, state, onNext, onReview }) {
   const [lines, setLines] = useState(DEMO_LINES);
   const [po, setPo] = useState('PO-77812');
   const [shipping, setShipping] = useState('25.00');
@@ -121,12 +129,24 @@ export default function Order({ catalog, onNext, onReview }) {
   const [result, setResult] = useState(null);
   const [paying, setPaying] = useState(false);
   const [view, setView] = useState('without'); // default: what a basic Level 1 checkout sends
+  const [paymentsLeft, setPaymentsLeft] = useState(state?.limits?.paymentsLeft ?? null);
 
-  const body = useMemo(() => ({ items: lines.filter((l) => l.sku), poNumber: po, shipping, taxRatePct: taxPct }), [lines, po, shipping, taxPct]);
+  // Input checks in the browser, with the same wording as the server's, so mistakes show next to the line.
+  const lineErrors = useMemo(() => lines.map((l, i) => {
+    if (!l.sku) return null; // an empty SKU row is ignored until it is filled in
+    if (l.qty === '' || l.qty === null || !Number.isFinite(Number(l.qty))) return `Line ${i + 1} (${l.sku}): enter a quantity.`;
+    if (!Number.isInteger(Number(l.qty))) return `Line ${i + 1} (${l.sku}): quantity must be a whole number.`;
+    if (Number(l.qty) < 1 || Number(l.qty) > 1000) return `Line ${i + 1} (${l.sku}): quantity must be from 1 to 1000.`;
+    if (lines.findIndex((x) => x.sku === l.sku) !== i) return `Line ${i + 1}: ${l.sku} appears twice. Combine the quantities.`;
+    return null;
+  }), [lines]);
+  const problems = lineErrors.filter(Boolean);
+  const filled = lines.filter((l) => l.sku);
+  const body = useMemo(() => ({ items: filled, poNumber: po, shipping, taxRatePct: taxPct }), [lines, po, shipping, taxPct]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setOrderId(null); setResult(null);
-    if (!body.items.length) { setPreview(null); setPerr(null); return undefined; }
+    if (!body.items.length || problems.length) { setPreview(null); setPerr(null); return undefined; }
     const t = setTimeout(async () => {
       try { setPreview(await api.preview(body)); setPerr(null); } catch (e) { setPreview(null); setPerr(e.message); }
     }, 220);
@@ -136,11 +156,18 @@ export default function Order({ catalog, onNext, onReview }) {
   const pay = async (again) => {
     const id = again && orderId ? orderId : (orderId || newOrderId());
     setOrderId(id); setPaying(true); setResult(null);
-    try { setResult(await api.pay({ ...body, orderId: id })); } catch (e) { setResult({ outcome: 'declined', message: e.message }); } finally { setPaying(false); }
+    try {
+      const r = await api.pay({ ...body, orderId: id });
+      setResult(r);
+      if (typeof r.paymentsLeft === 'number') setPaymentsLeft(r.paymentsLeft);
+    } catch (e) {
+      // A cap, a rate limit or a server problem: say so plainly. Nothing was charged.
+      setResult({ outcome: e instanceof ApiError && (e.cap || e.code === 'RATE_LIMIT') ? 'capped' : 'unknown_error', message: e.message });
+    } finally { setPaying(false); }
   };
 
   const setLine = (i, patch) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
-  const ok = preview?.ok;
+  const ok = preview?.ok && !problems.length;
   const paid = result?.outcome === 'charged';
   const v = ok ? preview.validation : null;
 
@@ -163,6 +190,7 @@ export default function Order({ catalog, onNext, onReview }) {
                   </label>
                   <label className="field"><span>{i === 0 ? 'Qty' : ' '}</span><input className="input mono" type="number" min="1" max="1000" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value === '' ? '' : Number(e.target.value) })} aria-label={`Line ${i + 1} quantity`} /></label>
                   <button className="x-btn" onClick={() => setLines(lines.filter((_, k) => k !== i))} aria-label={`Remove line ${i + 1}`}>×</button>
+                  {lineErrors[i] && <div className="field-error" role="alert" style={{ gridColumn: '1 / -1' }}>{lineErrors[i]}</div>}
                 </div>
               ))}
             </div>
@@ -194,13 +222,14 @@ export default function Order({ catalog, onNext, onReview }) {
             </div>
             <div className="card-b" style={{ padding: 0 }}>
               {perr && <div className="banner fail" style={{ margin: 16 }}><span>{perr}</span></div>}
-              {preview && !ok && (
+              {preview && preview.ok === false && preview.refused && (
                 <div className="banner warn" style={{ margin: 16 }} role="alert">
                   <div><div className="mono" style={{ fontWeight: 500 }}>ORDER CANNOT BE BUILT YET</div><div style={{ marginTop: 4 }}>{preview.refused.message}</div></div>
                   <Button small variant="secondary" icon="" onClick={onReview}>Go to review</Button>
                 </div>
               )}
-              {!preview && !perr && <div className="mono muted" style={{ padding: 20, fontSize: 12 }}>ADD A LINE TO SEE WHAT VISA RECEIVES.</div>}
+              {!preview && !perr && !problems.length && <div className="mono muted" style={{ padding: 20, fontSize: 12 }} data-testid="empty-order">{filled.length ? 'LOADING…' : 'ADD AT LEAST ONE LINE TO THE ORDER TO SEE WHAT VISA RECEIVES.'}</div>}
+              {problems.length > 0 && <div className="banner warn" role="alert" style={{ margin: 16 }} data-testid="order-problems"><span>Fix the highlighted line{problems.length > 1 ? 's' : ''} to see the order: {problems[0]}</span></div>}
               {ok && view === 'without' && (
                 <div key="without">
                   <dl className="kv" style={{ padding: '14px 16px' }}>
@@ -243,7 +272,7 @@ export default function Order({ catalog, onNext, onReview }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 <div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Chip kind="sandbox" /><span className="mono" style={{ fontSize: 12 }}>BRAINTREE SANDBOX · TEST CARD ••••0009 · COMMERCIAL</span></div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>The test card and all keys stay on the server. No real money moves.</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>The test card and all keys stay on the server. No real money moves.{paymentsLeft !== null && <span className="mono" data-testid="payments-left"> · SANDBOX PAYMENTS LEFT THIS SESSION: {paymentsLeft} OF {state?.limits?.paymentsMax}</span>}</div>
                 </div>
                 {paid
                   ? <Button icon="✓" disabled>Paid</Button>
