@@ -19,7 +19,9 @@ try { process.loadEnvFile(path.join(ROOT, '.env')); } catch { /* env may come fr
 
 const { classify, FLAG_THRESHOLD, BRAINTREE_UOM, PAYPAL_UOM } = require(path.join(ROOT, 'src', 'classify.js'));
 
-const args = Object.fromEntries(process.argv.slice(2).map((a) => {
+// Accept "--labels <path>" as well as "--labels=<path>".
+const argv = process.argv.slice(2).flatMap((a, i, all) => (all[i - 1] === '--labels' ? [] : a === '--labels' ? [`--labels=${all[i + 1]}`] : [a]));
+const args = Object.fromEntries(argv.map((a) => {
   const [k, v] = a.replace(/^--/, '').split('=');
   return [k, v ?? true];
 }));
@@ -52,7 +54,8 @@ function parseCsv(text) {
 }
 
 function loadLabels() {
-  const text = fs.readFileSync(path.join(__dirname, 'labels.csv'), 'utf8')
+  const file = args.labels ? path.resolve(args.labels) : path.join(__dirname, 'labels.csv');
+  const text = fs.readFileSync(file, 'utf8')
     .split(/\r?\n/).filter((l) => !l.startsWith('#')).join('\n');
   const [header, ...rows] = parseCsv(text);
   return rows.map((r) => {
@@ -321,7 +324,7 @@ function buildReport(runs, partialNote) {
 
 async function main() {
   let labels = loadLabels();
-  if (labels.length !== 60 && !args.limit) console.warn(`Warning: expected 60 label rows, found ${labels.length}`);
+  if (labels.length !== 60 && !args.limit && !args.labels) console.warn(`Warning: expected 60 label rows, found ${labels.length}`);
   if (args.limit) labels = labels.slice(0, Number(args.limit));
   if (args.skus) labels = labels.filter((l) => String(args.skus).split(',').includes(l.sku));
 
@@ -342,11 +345,17 @@ async function main() {
 
   const partial = (args.only || args.limit || args.skus) && !args['write-report'];
   const note = partial ? [args.only && `--only=${args.only}`, args.limit && `--limit=${args.limit}`].filter(Boolean).join(' ') : '';
-  const out = path.join(__dirname, partial ? 'report.partial.md' : 'report.md');
-  fs.writeFileSync(out, buildReport(runs, note));
-  fs.mkdirSync(path.join(__dirname, 'results'), { recursive: true });
+  const custom = !!args.labels; // a custom label file never overwrites the tuned-set report or results
+  const outDir = custom ? path.join(__dirname, 'holdout', 'raw') : __dirname;
+  fs.mkdirSync(outDir, { recursive: true });
+  const out = path.join(outDir, custom ? 'report-raw.md' : partial ? 'report.partial.md' : 'report.md');
+  let text;
+  try { text = buildReport(runs, note); } catch (e) { text = `REPORT BUILD FAILED (raw results are in the json files): ${e.message}`; } // never lose a paid run to a report bug
+  fs.writeFileSync(out, text);
+  const resDir = custom ? outDir : path.join(__dirname, 'results');
+  fs.mkdirSync(resDir, { recursive: true });
   for (const r of runs) {
-    fs.writeFileSync(path.join(__dirname, 'results', `${r.name}.json`), JSON.stringify({ model: r.model, seconds: r.seconds, summary: r.summary, rows: r.rows.map((x) => ({ ...x.res, expected: x.label.expected_unspsc, score: x.s })) }, null, 2));
+    fs.writeFileSync(path.join(resDir, `${r.name}.json`), JSON.stringify({ model: r.model, seconds: r.seconds, summary: r.summary, rows: r.rows.map((x) => ({ ...x.res, expected: x.label.expected_unspsc, score: x.s })) }, null, 2));
   }
   console.log(`Wrote ${path.relative(process.cwd(), out)}`);
 }
