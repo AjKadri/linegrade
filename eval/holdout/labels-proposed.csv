@@ -1,0 +1,32 @@
+# SYNTHETIC DATA: invented product names for evaluation only (frozen holdout, never used to tune the classifier). Not a real catalog. PROPOSED labels, to be verified by a human before any run. NONE = no code fits (flag or exclude). Codes only; official titles live in the local labels-review.md.
+sku,raw_name,expected_unspsc,expected_uom_braintree,expected_uom_paypal,notes
+HOL-001,Exam glv nitr Lrg blue 150ct pf,42132203,BX,BOX,pair-A gloves
+HOL-002,Surg glv latex sterile sz 7.5 50pr/bx,42132205,BX,BOX,pair-A gloves
+HOL-003,Wraparound spectacles smoke lens Z87+,46181802,EA,EACH,pair-B glasses
+HOL-004,Readers +1.75 blk frame 6/dsp,42142901,PK,PACK,pair-B glasses
+HOL-005,ASTM L2 procedure mask earloop blu 50/bx,42131713,BX,BOX,pair-C masks
+HOL-006,P100 half mask resp w/ cartridges med,46182002,EA,EACH,pair-C masks
+HOL-007,Ball pein hammer 12oz hickory hdl,27111616,EA,EACH,pair-D hammers
+HOL-008,Sledge hammer 8lb fiberglass hdl 36in,27111615,EA,EACH,pair-D hammers
+HOL-009,Rubber mallet 16oz white non-marring,27111617,EA,EACH,pair-D hammers
+HOL-010,Duct tape slvr 2in x 60yd 24rl/cs,31201501,CS,CASE,pair-E tapes
+HOL-011,Elec tape blk 3/4in x 66ft 10/pk,31201502,PK,PACK,pair-E tapes
+HOL-012,Ink cart blk 67XL compat hi-yld,44103105,EA,EACH,pair-F ink/toner
+HOL-013,Toner cart cyan TN-227 compat,44103103,EA,EACH,pair-F ink/toner
+HOL-014,Hanging file fldrs ltr 1/5 tab grn 25/bx,44122017,BX,BOX,pair-G folders
+HOL-015,Accordion file 13 pkt ltr poly blue,44122033,EA,EACH,pair-G folders
+HOL-016,Office ruler 12in clear plstc,44121637,EA,EACH,pair-H rulers
+HOL-017,Machinist rule 6in SS 1/64 grad,41111604,EA,EACH,pair-H rulers
+HOL-018,Hi-vis vest class 2 lime XL mesh,46181507,EA,EACH,plain
+HOL-019,Disinf wipes canister 75ct 12/cs,47131502,CS,CASE,plain
+HOL-020,Cardstock 8.5x11 65lb asst clr 250sh,14111519,PK,PACK,plain
+HOL-021,Index crds 3x5 ruled wht 100/pk 12pk/cs,14111518,CS,CASE,plain
+HOL-022,Tape measure 25ft x 1in blade lock,27111801,EA,EACH,plain
+HOL-023,Digital caliper 6in SS IP54,41111621,EA,EACH,plain
+HOL-024,Plotter paper 36in x 150ft 20lb 2rl,14111545,PK,PACK,plain
+HOL-025,Assorted hand tools bulk lot,NONE,EA,EACH,FLAG
+HOL-026,Item 4471 repl part,NONE,EA,EACH,FLAG
+HOL-027,Univ cable kit,NONE,EA,EACH,FLAG
+HOL-028,Fuel surcharge 6.5%,NONE,EA,EACH,EXCLUDE service/fee
+HOL-029,Onsite install labor 3hr,NONE,EA,EACH,EXCLUDE service/fee
+HOL-030,Annual maint contract renewal,NONE,EA,EACH,EXCLUDE service/fee

@@ -1,0 +1,32 @@
+# SYNTHETIC DATA: invented product names for evaluation only (frozen holdout, never used to tune the classifier). Not a real catalog.
+sku,raw_name
+HOL-001,Exam glv nitr Lrg blue 150ct pf
+HOL-002,Surg glv latex sterile sz 7.5 50pr/bx
+HOL-003,Wraparound spectacles smoke lens Z87+
+HOL-004,Readers +1.75 blk frame 6/dsp
+HOL-005,ASTM L2 procedure mask earloop blu 50/bx
+HOL-006,P100 half mask resp w/ cartridges med
+HOL-007,Ball pein hammer 12oz hickory hdl
+HOL-008,Sledge hammer 8lb fiberglass hdl 36in
+HOL-009,Rubber mallet 16oz white non-marring
+HOL-010,Duct tape slvr 2in x 60yd 24rl/cs
+HOL-011,Elec tape blk 3/4in x 66ft 10/pk
+HOL-012,Ink cart blk 67XL compat hi-yld
+HOL-013,Toner cart cyan TN-227 compat
+HOL-014,Hanging file fldrs ltr 1/5 tab grn 25/bx
+HOL-015,Accordion file 13 pkt ltr poly blue
+HOL-016,Office ruler 12in clear plstc
+HOL-017,Machinist rule 6in SS 1/64 grad
+HOL-018,Hi-vis vest class 2 lime XL mesh
+HOL-019,Disinf wipes canister 75ct 12/cs
+HOL-020,Cardstock 8.5x11 65lb asst clr 250sh
+HOL-021,Index crds 3x5 ruled wht 100/pk 12pk/cs
+HOL-022,Tape measure 25ft x 1in blade lock
+HOL-023,Digital caliper 6in SS IP54
+HOL-024,Plotter paper 36in x 150ft 20lb 2rl
+HOL-025,Assorted hand tools bulk lot
+HOL-026,Item 4471 repl part
+HOL-027,Univ cable kit
+HOL-028,Fuel surcharge 6.5%
+HOL-029,Onsite install labor 3hr
+HOL-030,Annual maint contract renewal
