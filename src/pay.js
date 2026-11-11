@@ -142,7 +142,7 @@ async function chargeRequest(request, opts = {}) {
     ...request,
     creditCard: { number: opts.card || COMMERCIAL_TEST_CARD, expirationDate: '12/2030', cvv: '123', cardholderName: 'Lab Ops Purchasing' },
   };
-  ledger.set(orderId, { status: 'pending', amount: request.amount, po: request.purchaseOrderNumber, started_at: new Date().toISOString() }, ledgerFile);
+  ledger.set(orderId, { status: 'pending', rail: 'braintree', amount: request.amount, po: request.purchaseOrderNumber, started_at: new Date().toISOString() }, ledgerFile);
 
   let result;
   try {

@@ -16,9 +16,10 @@ const ROOT = path.join(__dirname, '..');
 try { process.loadEnvFile(path.join(ROOT, '.env')); } catch { /* env may come from the shell or the host (Render) */ }
 
 const { enrichCatalog, approveSku, excludeSku, unapproveSku, ProviderUnavailableError, DEFAULT_INPUT } = require('../src/enrich-catalog');
-const { enrichSale, EnrichSaleError } = require('../src/enrich-sale');
+const { enrichSale, loadCatalog, EnrichSaleError } = require('../src/enrich-sale');
 const { level1Payload } = require('../src/validate');
 const { chargeRequest } = require('../src/pay');
+const paypal = require('../src/paypal');
 const { shortlist, BRAINTREE_UOM, FLAG_THRESHOLD, CLASSIFIER_VERSION, codeListKind } = require('../src/classify');
 const ledger = require('../src/ledger');
 const { orderReadiness, catalogReadiness } = require('../src/readiness');
@@ -86,6 +87,21 @@ function validationView(v) {
   return { valid: v.valid, score: v.score, passed: v.passed, total: v.total, checks: v.checks.map((c) => ({ id: c.id, label: c.label, status: c.status, detail: c.detail })) };
 }
 
+// Which payment rail the browser asked for. PayPal exists only when its credentials are set and the rail is not switched off.
+function parseRail(body) {
+  const rail = body && body.rail !== undefined ? String(body.rail) : 'braintree';
+  if (rail === 'braintree') return 'braintree';
+  if (rail !== 'paypal') throw new HttpError(400, 'Choose Braintree or PayPal.', { code: 'INVALID_INPUT', field: 'rail' });
+  if (!paypal.railStatus().enabled) throw new HttpError(400, 'The PayPal rail is not available on this server.', { code: 'RAIL_UNAVAILABLE', field: 'rail' });
+  return 'paypal';
+}
+
+// The validator view plus one check that exists only on the PayPal rail (units and fields Orders v2 accepts).
+function withRailCheck(view, check) {
+  const applicable = view.total + 1; const passed = view.passed + (check.status === 'pass' ? 1 : 0);
+  return { ...view, valid: view.valid && check.status === 'pass', passed, total: applicable, score: Math.round((100 * passed) / applicable), checks: [...view.checks, { id: check.id, label: check.label, status: check.status, detail: check.detail }] };
+}
+
 function refusalPayload(e) {
   return { code: e.code, message: e.message, details: e.details || {} };
 }
@@ -124,7 +140,7 @@ function createApp(opts = {}) {
   // Health check for the host (Render). No session, no rate limit, no secrets.
   app.get(['/health', '/api/health'], (req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.json({ status: 'ok', codeList: codeListKind(), uptimeSeconds: Math.round((Date.now() - START) / 1000), sandbox: true, synthetic: true, sessions: sessions.count(), commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined });
+    res.json({ status: 'ok', codeList: codeListKind(), paypalRail: paypal.railStatus().enabled ? 'on' : 'off', uptimeSeconds: Math.round((Date.now() - START) / 1000), sandbox: true, synthetic: true, sessions: sessions.count(), commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined });
   });
 
   app.use(express.json({ limit: '50kb' }));
@@ -145,6 +161,7 @@ function createApp(opts = {}) {
       paymentsLeft: Math.max(0, c.maxPaymentsSession - session.payments), paymentsMax: c.maxPaymentsSession,
       dailyBudgetExhausted: u.spend_usd >= c.dailyCapUsd,
       codeList: codeListKind(),
+      rails: { braintree: true, paypal: paypal.railStatus().enabled },
     };
   };
   const checkRerun = (session) => {
@@ -270,13 +287,21 @@ function createApp(opts = {}) {
   // Order preview: exactly what Visa/Braintree would receive ("as Visa sees it"). No card, no API call.
   app.post('/api/order/preview', (req, res) => {
     const order = parseOrder(req.body);
+    const rail = parseRail(req.body);
     try {
       const request = enrichSale({ ...order, orderId: 'PREVIEW-ORDER' }, { catalogPath: stOf(req).activePath() });
       const itemsTotal = request.lineItems.reduce((s, l) => s + Math.round(Number(l.totalAmount) * 100), 0) / 100;
       const rd = orderReadiness(request);
+      let before = validationView(rd.before); let after = validationView(rd.after); let ppInfo;
+      if (rail === 'paypal') {
+        const catalog = loadCatalog(stOf(req).activePath());
+        const rc = paypal.validatePayPalRail(request, catalog);
+        after = withRailCheck(after, rc); // before (Level 1) is unchanged: it sends no units at all
+        ppInfo = { uomNotes: paypal.buildPayPalOrder(request, catalog).uomNotes, railCheck: { status: rc.status, detail: rc.detail } };
+      }
       res.json({
-        ok: true, request, totals: { items: itemsTotal.toFixed(2), tax: request.taxAmount, shipping: request.shippingAmount, total: request.amount },
-        level1: level1Payload(request), validation: { before: validationView(rd.before), after: validationView(rd.after) },
+        ok: true, rail, request, totals: { items: itemsTotal.toFixed(2), tax: request.taxAmount, shipping: request.shippingAmount, total: request.amount },
+        level1: level1Payload(request), validation: { before, after }, ...(ppInfo ? { paypal: ppInfo } : {}),
       });
     } catch (e) {
       if (e instanceof EnrichSaleError) return res.json({ ok: false, refused: refusalPayload(e) });
@@ -290,9 +315,12 @@ function createApp(opts = {}) {
   app.post('/api/order/pay', wrap(async (req, res) => {
     const session = req.session; const st = stOf(req);
     const order = parseOrder(req.body);
+    const rail = parseRail(req.body);
+    const railName = rail === 'paypal' ? 'PayPal' : 'Braintree';
     const clientId = typeof req.body.orderId === 'string' && ORDER_ID_RE.test(req.body.orderId) ? req.body.orderId : `LG-UI-${Date.now().toString(36).toUpperCase()}`;
     const orderId = `${session.id.slice(0, 6)}-${clientId}`;
-    const already = (ledger.get(orderId, st.ledgerFile) || {}).status === 'charged';
+    const existing = ledger.get(orderId, st.ledgerFile) || {};
+    const already = existing.status === 'charged'; // on either rail
     if (!already) {
       const c = config(); const u = usage.snapshot();
       if (session.payments >= c.maxPaymentsSession) throw cap('session_payments', `You have used your ${c.maxPaymentsSession} sandbox payments for this session. Reset the demo or open a new browser session to continue.`);
@@ -302,13 +330,23 @@ function createApp(opts = {}) {
     try {
       request = enrichSale({ ...order, orderId }, { catalogPath: st.activePath() });
     } catch (e) {
-      if (e instanceof EnrichSaleError) return res.json({ outcome: 'refused', orderId, refused: refusalPayload(e), messages: ['No Braintree call was made and the ledger was not touched.'] });
+      if (e instanceof EnrichSaleError) return res.json({ outcome: 'refused', rail, orderId, refused: refusalPayload(e), messages: [`No ${railName} call was made and the ledger was not touched.`] });
       throw e;
     }
     const messages = [];
-    const result = await chargeRequest(request, { ledgerFile: st.ledgerFile, log: (l) => messages.push(l) });
-    if (COUNTED.has(result.outcome)) { session.payments += 1; usage.add({ payments: 1 }); }
-    res.json({ ...result, request, messages, sandbox: true, validation: validationView(orderReadiness(request).after), paymentsLeft: Math.max(0, config().maxPaymentsSession - session.payments) });
+    let result; let validation = validationView(orderReadiness(request).after);
+    if (rail === 'paypal') {
+      const catalog = loadCatalog(st.activePath());
+      validation = withRailCheck(validation, paypal.validatePayPalRail(request, catalog));
+      result = await paypal.chargePayPal(request, catalog, { ledgerFile: st.ledgerFile, log: (l) => messages.push(l) });
+    } else if (existing.rail === 'paypal' && ['pending', 'unknown'].includes(existing.status)) {
+      // An unresolved PayPal attempt for this order id: never charge it on Braintree as well.
+      result = { outcome: 'blocked_other_rail', orderId, rail: 'paypal', message: 'This order id has an unresolved attempt on PayPal. Retry it on PayPal first, so the order cannot be charged twice.' };
+    } else {
+      result = await chargeRequest(request, { ledgerFile: st.ledgerFile, log: (l) => messages.push(l) });
+    }
+    if (COUNTED.has(result.outcome) || (result.outcome === 'paypal_unavailable' && result.charged === 'unknown')) { session.payments += 1; usage.add({ payments: 1 }); }
+    res.json({ ...result, rail: result.rail || (result.outcome === 'already_charged' ? existing.rail || 'braintree' : rail), request, messages, sandbox: true, validation, paymentsLeft: Math.max(0, config().maxPaymentsSession - session.payments) });
   }));
 
   // Readiness: validator-based scores for the demo order (Level 1 before, Level 2/3 after) and the catalog,

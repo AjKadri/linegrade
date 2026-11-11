@@ -1,6 +1,5 @@
 // PayPal rail: payload, UoM mapping, idempotency and failure paths, against a local fake of the Orders v2 API.
 // No real PayPal call is made. Own file = own process, so the env below is read at load.
-const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,45 +18,9 @@ const catalog = loadCatalog();
 const demo = (orderId) => enrichSale({ orderId, poNumber: 'PO-77812', items: [{ sku: 'NLS-002', qty: 25 }, { sku: 'NLS-007', qty: 10 }, { sku: 'NLS-005', qty: 5 }], shipping: '25.00', taxRate: 0.08, shipsFromPostalCode: '60607', shipTo: { line1: '200 Science Park Rd', city: 'Madison', state: 'WI', postal: '53711' } }, { catalog });
 const tmpLedger = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lg-pp-')), 'ledger.json');
 
-// ---------- fake PayPal ----------
-const fake = { calls: [], mode: {}, orders: new Map(), byRequestId: new Map(), seq: 0 };
-const server = http.createServer((req, res) => {
-  let raw = ''; req.on('data', (c) => { raw += c; });
-  req.on('end', () => {
-    const rid = req.headers['paypal-request-id'];
-    fake.calls.push({ method: req.method, url: req.url, rid });
-    const send = (status, json) => { res.writeHead(status, { 'content-type': 'application/json', 'paypal-debug-id': 'dbg-test' }); res.end(JSON.stringify(json)); };
-    if (req.url === '/v1/oauth2/token') return send(200, { access_token: 'tok', expires_in: 3600 });
-    if (rid && fake.byRequestId.has(rid)) return send(...fake.byRequestId.get(rid)); // idempotent replay, like PayPal
-    const remember = (status, json) => { if (rid) fake.byRequestId.set(rid, [status, json]); send(status, json); };
-    if (req.method === 'POST' && req.url === '/v2/checkout/orders') {
-      if (fake.mode.create === '500') return send(500, { name: 'INTERNAL_SERVER_ERROR' });
-      if (fake.mode.create === 'decline') return remember(422, { name: 'UNPROCESSABLE_ENTITY', message: 'declined', details: [{ issue: 'INSTRUMENT_DECLINED', description: 'The instrument presented was declined.' }] });
-      const body = JSON.parse(raw);
-      const id = `FAKE-ORDER-${++fake.seq}`;
-      fake.orders.set(id, { id, status: 'APPROVED', body });
-      return remember(201, { id, status: 'APPROVED' });
-    }
-    const cap = req.url.match(/^\/v2\/checkout\/orders\/([^/]+)\/capture$/);
-    if (cap) {
-      if (fake.mode.capture === '500') return send(500, { name: 'INTERNAL_SERVER_ERROR' });
-      const o = fake.orders.get(cap[1]); o.status = 'COMPLETED'; o.capture = { id: `FAKE-CAP-${o.id}`, status: 'COMPLETED' };
-      return remember(201, { id: o.id, status: 'COMPLETED', purchase_units: [{ payments: { captures: [o.capture] } }] });
-    }
-    const get = req.url.match(/^\/v2\/checkout\/orders\/([^/]+)$/);
-    if (get && req.method === 'GET') {
-      const o = fake.orders.get(get[1]); const spu = o.body.purchase_units[0];
-      const unit = { ...spu, payments: { captures: [o.capture] } };
-      if (fake.mode.echo === 'none') delete unit.supplementary_data;
-      return send(200, { id: o.id, status: o.status, purchase_units: [unit], payment_source: { card: { brand: 'VISA', last_digits: '1881', type: 'UNKNOWN' } } });
-    }
-    return send(404, { name: 'NOT_FOUND' });
-  });
-});
-test.before(async () => {
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  process.env.PAYPAL_API_BASE = `http://127.0.0.1:${server.address().port}`;
-});
+const { fake, server, start } = require('./helpers/fake-paypal');
+
+test.before(async () => { process.env.PAYPAL_API_BASE = await start(); });
 test.after(() => server.close());
 test.beforeEach(() => { fake.calls = []; fake.mode = {}; delete process.env.CHAOS_PAYPAL; });
 const posts = () => fake.calls.filter((c) => c.method === 'POST' && c.url !== '/v1/oauth2/token');

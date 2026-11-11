@@ -25,6 +25,10 @@ services:
         sync: false
       - key: BT_PRIVATE_KEY
         sync: false
+      - key: PP_CLIENT_ID        # optional: PayPal sandbox app. With both PP_* set the PayPal rail appears; without them it stays hidden
+        sync: false
+      - key: PP_CLIENT_SECRET
+        sync: false
       - key: ADMIN_TOKEN        # optional: lets you switch live AI off without a redeploy
         sync: false
       # Not secret.
