@@ -76,3 +76,15 @@ Scoring is the same code as the tuned-set harness (`eval/run.js`; only a `--labe
 | pair-H rulers | HOL-016: 44121637 (0.85) ok; HOL-017: 41111604 (0.85) ok |
 
 Look-alike rule (same-class runner-up within 0.2): flagged 0 extra row(s) in this run.
+
+## Post-hoc label review (after the single run; headline numbers unchanged)
+
+Everything above is the as-run result, scored against the labels verified before the run. `labels-proposed.csv`, the 0.6 flag threshold and every headline figure are unchanged. This section only records a review of the three misses done afterwards, so it is not a clean holdout result.
+
+| SKU | Classifier code | Expected | Review |
+|---|---|---|---|
+| HOL-024 | 14111510 (conf 0.93) | 14111545 | **Label was wrong.** 14111510 is the specific code for plotter paper, so the classifier's answer is correct. |
+| HOL-018 | 46181555 (conf 0.82) | 46181507 | Debatable: 46181555 is arguably as correct as the expected code. Still counted as a miss in the numbers above. |
+| HOL-004 | 42142929 (conf 0.60) | 42142901 | **Genuine miss** (bar readers vs eyeglasses). Confidence was exactly 0.60 and the row was not flagged, because the rule is "below 0.6". |
+
+Secondary line, clearly not the headline: **if HOL-024 is relabelled to 14111510, 22/24 coded rows are accepted (21/24 as run) and confident-wrong (wrong with confidence > 0.85) drops from 1 to 0.** Overall accepted would be 28/30 instead of 27/30. This relabelling was made after seeing the result and favours the classifier; the as-run numbers above are the ones to quote.
