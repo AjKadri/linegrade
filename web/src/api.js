@@ -45,7 +45,7 @@ async function health() {
     if (!j || j.status !== 'ok') throw new Error('the server did not report ok');
     return j;
   } catch (e) {
-    throw new Error(e.name === 'AbortError' ? 'no answer within 8 seconds' : (e.message || String(e)));
+    throw new Error(e.name === 'AbortError' ? 'no answer within 8 seconds' : e.name === 'TypeError' ? 'could not connect to the server (network error)' : (e.message || String(e)));
   } finally { clearTimeout(timer); }
 }
 
