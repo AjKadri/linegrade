@@ -82,6 +82,16 @@ From Render's docs ([Deploy for Free](https://render.com/docs/free)): a Free web
 | Bad quantity, empty order, duplicate or unknown SKU | Error next to the line in the browser; the server repeats the same checks (HTTP 400 with the field named, or a refusal naming the SKU) before any payment call. |
 | Server restarts | Sessions are cleared; the UI says so and starts from the frozen catalog. |
 
+## 8b. PayPal rail (optional second payment rail)
+
+- **Switching on:** set `PP_CLIENT_ID` and `PP_CLIENT_SECRET` (PayPal **sandbox** app credentials) in the Render dashboard; they are declared `sync: false` in `render.yaml`, never in the repo. Without both, the rail is hidden everywhere and `/health` shows `"paypalRail":"off"`; with them it shows `"on"` after the next deploy or restart.
+- **Switching off:** set `PAYPAL_RAIL=off` (or remove the two variables). Braintree is unaffected either way.
+- **Caps:** the per-session and per-day payment caps count both rails together. A decline or a charged order counts; a request that never reached PayPal does not.
+- **Failure behaviour:** PayPal unreachable or answering 5xx shows "PayPal is unavailable"; the order is not left in an unknown state: nothing new is sent that could charge twice, and a retry reuses the same idempotency key. A definite decline allows a fresh attempt.
+- **Units:** only the PayPal unit words that worked in our tests are sent (see README); PayPal's sandbox returns a 500 on some valid values, reported to PayPal.
+- **Cost:** $0 (sandbox). No PayPal LLM or per-call fees.
+- **Test-only:** `ALLOW_CHAOS=1` with `CHAOS_PAYPAL=down|5xx` simulates an unavailable PayPal in tests. Never set `ALLOW_CHAOS` in production.
+
 ## 9. Known limits
 
 - Sessions, rate limits and caps live in memory/ephemeral disk of a **single instance** (the free tier cannot scale out anyway). A restart resets daily counters; the OpenRouter key limit is the backstop.

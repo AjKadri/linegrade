@@ -13,6 +13,14 @@ npm run test:unit
 ```
 Without the UNSPSC list the demo **replays a saved run** (labelled REPLAY) from the frozen `data/enriched-catalog.json`. "Re-run AI" is disabled ("Live AI runs locally with the licensed UNSPSC list; this demo replays a saved run."), and the Edit-code search only offers codes already in the catalog. Review, order, payment, validation, readiness and the fee estimate all work. `/health` reports `codeList: "none"`.
 
+## Two payment rails (sandbox): Braintree and PayPal
+The Order screen pays through **Braintree** by default. If the server has `PP_CLIENT_ID` and `PP_CLIENT_SECRET` (PayPal sandbox app), a "Payment rail" selector adds **PayPal Orders v2**, which carries the same Level 2/3 data (PO/invoice id, tax, ships-from, shipping, commodity code, unit and description per line) built from the same enriched line items. Without those variables, or with `PAYPAL_RAIL=off`, the PayPal rail is hidden and `/health` reports `paypalRail: "off"`.
+
+- **Units:** PayPal's sandbox returns a 500 on some valid-looking unit values (reported to PayPal), so the PayPal rail only sends values that passed our tests: `KGM, LTR, ITM, ACR, EACH, BOX, PACK, CASE, POUND, KILOGRAM, LITER, UNIT`. Short codes are mapped (`EA`→`EACH`, `BX`→`BOX`, `PK`→`PACK`, `CS`→`CASE`, `LB`→`POUND`, `KG`→`KGM`), everything is uppercased, and a unit that is still not on the list is left out for that line with the reason recorded.
+- **Retries are safe:** create and capture carry a `PayPal-Request-Id` derived from our order id, so a retry after a timeout or 5xx replays the same result instead of charging twice. The ledger records the rail; an order id charged on one rail is "already charged" on the other.
+- **Read-back:** after capture the order is read back and compared. In the sandbox PayPal returns the Level 2 and Level 3 fields, so the stamp can show a full pass; if it ever stops returning them the UI says "Accepted by PayPal (Level 3 sent; PayPal does not return it on read-back)" instead of claiming a pass.
+- **Commercial card:** PayPal's sandbox returns no card BIN data, so the PayPal rail never claims the test card was detected as commercial (the Braintree rail does, from Braintree's own field).
+
 ## Live AI locally (needs your own UNSPSC download)
 1. Download the UNSPSC English workbook from https://www.unspsc.org (UNDP terms apply) and save it as `data/unspsc_english.xlsx`.
 2. `node scripts/build-subset.js` writes `data/unspsc-subset.csv` (both files are gitignored). `/health` then reports `codeList: "full"`.
