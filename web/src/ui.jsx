@@ -94,25 +94,34 @@ export function Preloader() {
 
 // Shown only if the server does not answer within about a second and a half (a sleeping free-tier instance
 // takes about a minute to start). Normal loads never see it.
-export function WakeScreen({ awake }) {
+// After this long without an answer the counter is replaced by "Still waking up" + Retry. ?wakestuck=N is a test hook.
+const wakeStuckSeconds = () => Number(new URLSearchParams(location.search).get('wakestuck')) || 60;
+export function WakeScreen({ awake, since, detail, onRetry }) {
   const [visible, setVisible] = useState(false);
-  const [seconds, setSeconds] = useState(0);
+  const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    if (awake) { setVisible(false); setSeconds(0); return undefined; }
+    if (awake) { setVisible(false); return undefined; }
     const show = setTimeout(() => setVisible(true), 1500);
-    const tick = setInterval(() => setSeconds((s) => s + 1), 1000);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => { clearTimeout(show); clearInterval(tick); };
   }, [awake]);
   if (awake || !visible) return null;
+  const seconds = Math.max(0, Math.round((now - (since || now)) / 1000));
+  const stuck = seconds >= wakeStuckSeconds(); // never an endless counter
   return (
     <div className="wake" role="status" aria-live="polite" data-testid="wake-screen">
       <div style={{ color: '#ede8e8', display: 'flex', alignItems: 'center', gap: 12 }}><LogoMark size={44} draw /><span className="wm" style={{ fontSize: 28 }}>linegrade</span></div>
-      <div className="wake-title">WAKING UP THE DEMO</div>
+      <div className="wake-title" data-testid="wake-title">{stuck ? 'STILL WAKING UP' : 'WAKING UP THE DEMO'}</div>
       <div className="bar wake-bar"><i /></div>
       <p className="mono" style={{ fontSize: 12, color: '#8a8a85', maxWidth: 420, textAlign: 'center', lineHeight: 1.7 }}>
-        THIS DEMO RUNS ON A FREE SERVER THAT SLEEPS WHEN IDLE. IT USUALLY TAKES ABOUT A MINUTE TO START. THIS PAGE CONTINUES BY ITSELF.
+        {stuck
+          ? 'THE SERVER HAS NOT ANSWERED YET. A FREE SERVER CAN TAKE LONGER THAN A MINUTE. THIS PAGE STILL CONTINUES BY ITSELF WHEN IT ANSWERS, OR RETRY NOW.'
+          : 'THIS DEMO RUNS ON A FREE SERVER THAT SLEEPS WHEN IDLE. IT USUALLY TAKES ABOUT A MINUTE TO START. THIS PAGE CONTINUES BY ITSELF.'}
       </p>
-      <div className="mono" style={{ fontSize: 12, color: '#8a8a85' }}>{seconds} s</div>
+      {detail && seconds >= 8 && <div className="mono" style={{ fontSize: 11, color: '#8a8a85', maxWidth: 420, textAlign: 'center' }} data-testid="wake-detail">LAST ANSWER: {String(detail).toUpperCase()}</div>}
+      {stuck
+        ? <Button small onClick={onRetry} data-testid="wake-retry">Retry</Button>
+        : <div className="mono" style={{ fontSize: 12, color: '#8a8a85' }}>{seconds} s</div>}
     </div>
   );
 }

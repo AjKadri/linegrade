@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { Button, Chip, LogoMark, Preloader, WakeScreen } from './ui.jsx';
 import Landing from './screens/Landing.jsx';
@@ -27,23 +27,38 @@ export default function App() {
   }, []);
 
   // Waking up: Render's free tier sleeps after 15 idle minutes. Poll /health until the server answers.
-  useEffect(() => {
-    let cancelled = false;
-    const wake = async () => {
-      setAwake(false);
-      while (!cancelled) {
-        try { await api.health(); if (!cancelled) setAwake(true); return; } catch { await new Promise((r) => setTimeout(r, 2000)); }
+  // One loop at a time. If the server is fine (a single quick /health says so) the screen never appears, so an
+  // API-level hiccup cannot trap anyone behind it. The screen leaves as soon as /health is ok.
+  const [wakeInfo, setWakeInfo] = useState({ since: Date.now(), detail: null });
+  const gen = useRef(0);
+  const running = useRef(false);
+  const wake = useCallback(async ({ immediate = false, restart = false } = {}) => {
+    if (running.current && !restart) return;
+    const mine = ++gen.current; // a newer loop (Retry) cancels the older one
+    running.current = true;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    try {
+      if (immediate) { setWakeInfo({ since: Date.now(), detail: null }); setAwake(false); }
+      for (let first = true; gen.current === mine; first = false) {
+        try { await api.health(); if (gen.current === mine) setAwake(true); return; } catch (e) {
+          if (gen.current !== mine) return;
+          setWakeInfo((i) => ({ since: first && !immediate ? Date.now() : i.since, detail: e.message }));
+          setAwake(false);
+        }
+        await sleep(2000);
       }
-    };
-    wake();
+    } finally { if (gen.current === mine) running.current = false; }
+  }, []);
+  useEffect(() => {
+    wake({ immediate: true });
     const offline = () => { wake(); };
     const gone = () => setExpired(true);
     window.addEventListener('lg:offline', offline);
     window.addEventListener('lg:session-expired', gone);
-    return () => { cancelled = true; window.removeEventListener('lg:offline', offline); window.removeEventListener('lg:session-expired', gone); };
-  }, []);
+    return () => { gen.current += 1; window.removeEventListener('lg:offline', offline); window.removeEventListener('lg:session-expired', gone); };
+  }, [wake]);
 
-  useEffect(() => { if (awake) api.state().then(setState).catch((e) => { if (e.code !== 'OFFLINE') setError(`Cannot reach the API: ${e.message}`); }); }, [awake]);
+  useEffect(() => { if (awake) api.state().then(setState).catch((e) => setError(e.code === 'OFFLINE' ? 'The server is up but the app could not load its data. Use Retry.' : `Cannot reach the API: ${e.message}`)); }, [awake]);
   useEffect(() => { if (screen !== 'landing' && !catalog) reload().catch((e) => setError(e.message)); }, [screen, catalog, reload]);
   useEffect(() => { document.documentElement.dataset.theme = THEME[screen] || 'dark'; window.scrollTo(0, 0); }, [screen]);
 
@@ -58,7 +73,7 @@ export default function App() {
   return (
     <div className="app">
       <Preloader />
-      <WakeScreen awake={awake} />
+      <WakeScreen awake={awake} since={wakeInfo.since} detail={wakeInfo.detail} onRetry={() => wake({ immediate: true, restart: true })} />
       <div className="grain" aria-hidden="true" />
       <header className="topbar">
         <div className="topbar-inner">
@@ -76,7 +91,7 @@ export default function App() {
       </header>
       <main className="frame">
         {expired && <div className="banner warn" role="alert" style={{ margin: 16 }}><span>Your session expired after {state?.session?.idleMinutes ?? 120} minutes of inactivity. Your earlier approvals are gone: you are back on the frozen demo catalog.</span><Button small variant="secondary" icon="" onClick={restartFromFrozen}>Start again</Button></div>}
-        {error && <div className="banner fail" role="alert" style={{ margin: 16 }}><span>{error}</span><Button small variant="secondary" icon="" onClick={() => setError(null)}>Dismiss</Button></div>}
+        {error && <div className="banner fail" role="alert" style={{ margin: 16 }}><span>{error}</span><span style={{ display: 'flex', gap: 8 }}><Button small variant="secondary" icon="" onClick={() => { setError(null); api.state().then(setState).catch(() => setError('Still cannot load the app data. Check your connection and try again.')); }}>Retry</Button><Button small variant="secondary" icon="" onClick={() => setError(null)}>Dismiss</Button></span></div>}
         {screen === 'landing' && <Landing state={state} onLoad={loadDemo} loading={loading} />}
         {screen === 'enrich' && catalog && <Enrich state={state} catalog={catalog} reload={reload} onNext={() => go('review')} />}
         {screen === 'review' && catalog && <Review catalog={catalog} counts={counts} reload={reload} onNext={() => go('order')} />}

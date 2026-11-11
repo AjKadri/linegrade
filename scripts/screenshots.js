@@ -166,6 +166,25 @@ async function main() {
   await shot('05-readiness.png');
   await ctx.close();
 
+  // ---------- returning browsers: an old/expired session cookie, and a browser without AbortSignal.timeout ----------
+  // The wake screen must not appear and the app must load fast whenever /health is ok.
+  const loadsFast = async (label, ctxOpts, init) => {
+    const c = await browser.newContext({ viewport: { width: 1280, height: 800 }, ...ctxOpts });
+    if (init) await c.addInitScript(init);
+    const pgx = await c.newPage();
+    const t = Date.now();
+    await pgx.goto(BASE, { timeout: 120000 });
+    await pgx.waitForSelector('.preloader', { state: 'detached', timeout: 8000 }).catch(() => {});
+    await pgx.getByRole('button', { name: /load demo catalog/i }).waitFor({ timeout: 8000 });
+    await pgx.waitForFunction(() => !document.querySelector('[data-testid="wake-screen"]'), null, { timeout: 8000 });
+    const ms = Date.now() - t;
+    check(`${label}: loads in under 5 s and never shows the waking-up screen (server warm)`, ms < 5000 && (await pgx.getByTestId('wake-screen').count()) === 0, `${(ms / 1000).toFixed(1)} s`);
+    await c.close();
+  };
+  const host = new URL(BASE);
+  await loadsFast('Returning browser with an old session cookie', { storageState: { cookies: [{ name: 'lg_sid', value: 'OLDOLDOLDOLDOLDOLDOLDOLD', domain: host.hostname, path: '/', httpOnly: true, secure: host.protocol === 'https:', sameSite: 'Lax', expires: Math.floor(Date.now() / 1000) + 86400 }], origins: [] } });
+  await loadsFast('Older browser without AbortSignal.timeout', {}, 'delete AbortSignal.timeout;');
+
   // ---------- PayPal rail (only when the server has the PayPal credentials; on Render without them it must stay hidden) ----------
   const hz = await (await fetch(`${BASE}/health`)).json();
   const pctx = await browser.newContext({ viewport: { width: 1440, height: 900 } }); // fresh browser = fresh session

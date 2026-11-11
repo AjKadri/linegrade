@@ -156,6 +156,27 @@ async function main() {
     const s4b = startServer(8814, {}); servers.push(s4b); await s4b.ready; // it wakes
     await p4.waitForSelector('[data-testid="wake-screen"]', { state: 'detached', timeout: 20000 });
     check('Waking up: the page continues by itself once the server answers', true);
+
+    // ---------- 5. the server never answers: no endless counter, a clear message and a Retry ----------
+    const s5 = startServer(8815, {});
+    servers.push(s5); await s5.ready;
+    const p5 = await newPage();
+    await p5.goto(`${s5.base}/?screen=order&wakestuck=4`);
+    await p5.waitForSelector('.seg');
+    await s5.stop();
+    await p5.getByRole('button', { name: 'Readiness' }).click();
+    await p5.waitForSelector('[data-testid="wake-screen"]', { timeout: 15000 });
+    await p5.waitForSelector('[data-testid="wake-retry"]', { timeout: 20000 });
+    const stuckText = (await p5.getByTestId('wake-screen').innerText()).replace(/\s+/g, ' ');
+    check('Not answering: after the limit the screen says "Still waking up" with a Retry, not a counter that runs forever', /STILL WAKING UP/.test(stuckText) && !/\d+ s$/.test(stuckText.trim()) && /RETRY/i.test(stuckText), stuckText.slice(0, 70));
+    check('Not answering: shows what the browser last got back', (await p5.getByTestId('wake-detail').count()) === 1, (await p5.getByTestId('wake-detail').innerText().catch(() => '')).slice(0, 80));
+    await shot(p5, 'f9-still-waking-up.png');
+    await p5.getByTestId('wake-retry').click();
+    await p5.waitForSelector('[data-testid="wake-title"]');
+    check('Not answering: Retry starts a fresh wait (title back to "Waking up", counter restarts)', /WAKING UP THE DEMO/.test(await p5.getByTestId('wake-title').innerText()));
+    const s5b = startServer(8815, {}); servers.push(s5b); await s5b.ready;
+    await p5.waitForSelector('[data-testid="wake-screen"]', { state: 'detached', timeout: 20000 });
+    check('Not answering: the page continues by itself as soon as /health is ok', true);
   } finally {
     for (const s of servers) { try { s.child.kill('SIGTERM'); } catch { /* already stopped */ } }
     await browser.close();

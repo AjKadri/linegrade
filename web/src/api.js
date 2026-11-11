@@ -33,8 +33,24 @@ async function call(method, url, body) {
   return data;
 }
 
+// Is the server up? Resolves with /health's JSON, rejects with a short reason a person can read.
+// Uses AbortController + setTimeout (not AbortSignal.timeout, which older Safari and some webviews lack).
+async function health() {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const r = await fetch('/health', { cache: 'no-store', signal: ctrl.signal });
+    if (!r.ok) throw new Error(`the server answered HTTP ${r.status}`);
+    let j; try { j = await r.json(); } catch { throw new Error('the reply was not the app (a loading page?)'); }
+    if (!j || j.status !== 'ok') throw new Error('the server did not report ok');
+    return j;
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'no answer within 8 seconds' : (e.message || String(e)));
+  } finally { clearTimeout(timer); }
+}
+
 export const api = {
-  health: () => fetch('/health', { cache: 'no-store', signal: AbortSignal.timeout(8000) }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))),
+  health,
   state: () => call('GET', '/api/state'),
   catalog: () => call('GET', '/api/catalog'),
   reset: () => call('POST', '/api/catalog/reset'),
