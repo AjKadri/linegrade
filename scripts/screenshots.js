@@ -166,6 +166,61 @@ async function main() {
   await shot('05-readiness.png');
   await ctx.close();
 
+  // ---------- PayPal rail (only when the server has the PayPal credentials; on Render without them it must stay hidden) ----------
+  const hz = await (await fetch(`${BASE}/health`)).json();
+  const pctx = await browser.newContext({ viewport: { width: 1440, height: 900 } }); // fresh browser = fresh session
+  const pg = await pctx.newPage();
+  pg.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  pg.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  const shotPg = async (name) => {
+    await pg.addStyleTag({ content: '.topbar{position:static !important}' });
+    await pg.screenshot({ path: path.join(OUT, name), fullPage: true });
+    await pg.evaluate(() => { document.querySelectorAll('style').forEach((st) => { if (st.textContent === '.topbar{position:static !important}') st.remove(); }); });
+  };
+  await pg.goto(`${BASE}/?screen=order`, { timeout: 120000 });
+  await pg.waitForSelector('.preloader', { state: 'detached', timeout: 8000 }).catch(() => {});
+  await pg.getByRole('button', { name: /with linegrade/i }).click();
+  await pg.waitForSelector('table.t tbody tr');
+  if (hz.paypalRail !== 'on') {
+    check('PayPal rail hidden: no rail selector on the Order screen (server has no PayPal credentials)', (await pg.getByRole('group', { name: 'Payment rail' }).count()) === 0);
+    check('PayPal rail hidden: Braintree is the only rail', /BRAINTREE SANDBOX/.test(await pg.getByTestId('rail-line').innerText()));
+  } else {
+    const sel = pg.getByRole('group', { name: 'Payment rail' });
+    check('Rails: selector shows Braintree and PayPal, Braintree is the default', await sel.isVisible() && (await sel.getByRole('button', { name: 'Braintree' }).getAttribute('aria-pressed')) === 'true');
+    check('Rails (Braintree): pay line claims the commercial test card', /COMMERCIAL/.test(await pg.getByTestId('rail-line').innerText()));
+    await pg.waitForTimeout(900);
+    await shotPg('06a-order-rail-braintree.png');
+    await sel.getByRole('button', { name: 'PayPal' }).click();
+    await pg.waitForSelector('[data-testid="pp-commercial-note"]');
+    await pg.waitForSelector('table.t tbody tr');
+    await pg.waitForTimeout(900);
+    const railLine = await pg.getByTestId('rail-line').innerText();
+    check('Rails (PayPal): no claim that the card is commercial; a note says sandbox gives no BIN data', !/COMMERCIAL/.test(railLine) && /no card BIN data/i.test(await pg.getByTestId('pp-commercial-note').innerText()), railLine);
+    const units = await pg.locator('table.t tbody tr td:nth-child(3)').allInnerTexts();
+    check('Rails (PayPal): units shown as PayPal words, not EA/BX codes', units.join(',') === 'BOX,PACK,CASE', units.join(','));
+    await shotPg('06b-order-rail-paypal.png');
+    await pg.getByRole('button', { name: /pay .*958\.05.* with paypal sandbox/i }).click();
+    await pg.waitForSelector('[data-testid="txn-id"]', { timeout: 60000 });
+    await pg.waitForSelector('.stamp');
+    const capId = (await pg.getByTestId('txn-id').innerText()).trim();
+    const stampPp = (await pg.getByTestId('stamp').innerText()).trim();
+    const notEchoed = await pg.getByTestId('pp-not-echoed').count();
+    const note = notEchoed ? (await pg.getByTestId('pp-not-echoed').innerText()) : '';
+    check('PayPal: captured, capture id shown', /^[A-Z0-9]{10,}$/.test(capId), capId);
+    check('PayPal: stamp is PASS n/n only if the read-back returned Level 3, otherwise ACCEPTED with the explanation', notEchoed ? (/ACCEPTED/.test(stampPp) && /LEVEL 3 SENT; PAYPAL DOES NOT RETURN IT/i.test(note)) : /PASS \d+\/\d+/.test(stampPp), `${stampPp} | ${notEchoed ? note : 'level 3 echoed'}`);
+    await pg.getByRole('button', { name: 'Show all checks' }).click();
+    const rbText = await pg.locator('table[aria-label="All read-back checks"]').innerText();
+    check('PayPal: read-back table is headed "PayPal returned" and has no commercial-card row', /PayPal returned/i.test(rbText) && !/Commercial card/i.test(rbText));
+    check('PayPal: payments left drops to 4 of 5', /PAYMENTS LEFT THIS SESSION: 4 OF 5/.test(await pg.getByTestId('payments-left').innerText()));
+    await pg.waitForTimeout(1500);
+    await shotPg('06c-order-paypal-paid.png');
+    await pg.getByRole('button', { name: /submit same order again/i }).click();
+    await pg.waitForSelector('.banner');
+    check('PayPal: same order again says ALREADY CHARGED on PayPal', /ALREADY CHARGED/.test(await pg.locator('.banner').innerText()) && /PayPal/.test(await pg.locator('.banner').innerText()));
+    console.log(`        PayPal capture ${capId}`);
+  }
+  await pctx.close();
+
   // ---------- reduced motion ----------
   const rctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   const rp = await rctx.newPage();

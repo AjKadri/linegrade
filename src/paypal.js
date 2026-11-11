@@ -244,7 +244,12 @@ function readBackChecks(sent, got) {
       add(`Level 3 line ${k + 1}`, `${w.commodity_code} ${w.unit_of_measure ?? '(unit omitted)'} x${w.quantity} total ${w.total_amount.value}`, `${g.commodity_code} ${g.unit_of_measure ?? '(unit omitted)'} x${g.quantity} total ${money(g.total_amount)}`, same);
     });
   }
-  return { checks, level3Echoed, level2Echoed: !!l2, fieldsReturned: keyPaths(got).sort() };
+  // Level 3 lines as PayPal returned them, shaped like the Braintree read-back rows (tax column = unit tax x quantity).
+  const lineItemsReturned = l3Lines.map((g, k) => ({
+    productCode: (items[k] && items[k].sku) || '', commodityCode: g.commodity_code, unitOfMeasure: g.unit_of_measure ?? '(omitted)', quantity: String(g.quantity),
+    totalAmount: money(g.total_amount), taxAmount: ((Math.round(Number(money(g.tax)) * 100) * Number(g.quantity)) / 100).toFixed(2), description: g.description, name: g.name,
+  }));
+  return { checks, lineItemsReturned, level3Echoed, level2Echoed: !!l2, fieldsReturned: keyPaths(got).sort() };
 }
 
 // ---------- charge ----------
@@ -336,7 +341,7 @@ async function chargePayPal(request, catalog, opts = {}) {
     outcome: 'charged', rail: 'paypal', orderId, transactionId: capture.id || order.id, paypalOrderId: order.id, status: capture.status || order.status, amount: request.amount,
     debugId: created.debugId, uomNotes, readBackError,
     checks: rb ? rb.checks : [], passed: rb ? rb.checks.every((c) => c.pass) : false,
-    level3Echoed: rb ? rb.level3Echoed : false, level2Echoed: rb ? rb.level2Echoed : false, fieldsReturned: rb ? rb.fieldsReturned : [],
+    lineItemsReturned: rb ? rb.lineItemsReturned : [], level3Echoed: rb ? rb.level3Echoed : false, level2Echoed: rb ? rb.level2Echoed : false, fieldsReturned: rb ? rb.fieldsReturned : [],
     transaction: { id: capture.id || order.id, status: capture.status || order.status, amount: request.amount, commercial: null, cardLast4: rb && rb.card ? rb.card.last_digits : undefined },
   };
   return out;

@@ -13,12 +13,15 @@ const Tick = () => (
   <svg viewBox="0 0 34 34" aria-hidden="true"><path className="tick draw" d="M5 18 l8 8 l16 -19" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="square" pathLength="20" /></svg>
 );
 
-function ChecksTable({ checks }) {
+const RAIL_NAME = { braintree: 'Braintree', paypal: 'PayPal' };
+const PP_NOT_ECHOED = 'Accepted by PayPal (Level 3 sent; PayPal does not return it on read-back)';
+
+function ChecksTable({ checks, rail = 'braintree' }) {
   return (
     <div className="tscroll">
       <table className="t fixed" aria-label="All read-back checks">
         <colgroup><col style={{ width: '24%' }} /><col style={{ width: '33%' }} /><col style={{ width: '33%' }} /><col style={{ width: '10%' }} /></colgroup>
-        <thead><tr><th>Check</th><th>Sent</th><th>Braintree returned</th><th className="r">Result</th></tr></thead>
+        <thead><tr><th>Check</th><th>Sent</th><th>{RAIL_NAME[rail]} returned</th><th className="r">Result</th></tr></thead>
         <tbody>
           {checks.map((c) => (
             <tr key={c.check}><td>{c.check}</td><td className="mono">{c.expected}</td><td className="mono">{String(c.actual)}</td><td className={`r ${c.pass ? 'pass' : 'failt'}`}>{c.pass ? 'PASS' : 'FAIL'}</td></tr>
@@ -34,16 +37,22 @@ function Payoff({ result, paying, onAgain, onNext }) {
   const [showChecks, setShowChecks] = useState(false);
   useEffect(() => setShowChecks(false), [result]);
 
+  const rail = result.rail || 'braintree';
+  const railName = RAIL_NAME[rail];
   if (result.outcome === 'charged') {
     const failed = result.checks.filter((c) => !c.pass);
+    // PayPal: only claim a full read-back if PayPal really returned Level 3. Otherwise say what we know.
+    const partial = rail === 'paypal' && !result.level3Echoed;
+    const stampText = failed.length ? `FAIL ${failed.length}` : partial ? 'ACCEPTED' : `PASS ${result.checks.length}/${result.checks.length}`;
     return (
       <div className="payoff-wrap" aria-live="polite">
         <div className="payoff">
-          <span className={`stamp${failed.length ? ' fail' : ''}`}><Tick />{failed.length ? `FAIL ${failed.length}` : `PASS ${result.checks.length}/${result.checks.length}`}</span>
+          <span className={`stamp${failed.length ? ' fail' : ''}`} data-testid="stamp"><Tick />{stampText}</span>
           <div>
-            <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em' }}>TRANSACTION ID</div>
+            <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em' }}>{rail === 'paypal' ? 'PAYPAL CAPTURE ID' : 'TRANSACTION ID'}</div>
             <div className="mono" style={{ fontSize: 22 }} data-testid="txn-id">{result.transactionId}</div>
-            <div className="mono muted" style={{ fontSize: 11 }}>{result.status} · {money(result.amount)} · SANDBOX · {result.checks.length - failed.length} OF {result.checks.length} CHECKS PASSED</div>
+            <div className="mono muted" style={{ fontSize: 11 }}>{rail === 'paypal' ? `ORDER ${result.paypalOrderId} · ` : ''}{result.status} · {money(result.amount)} · SANDBOX · {result.checks.length - failed.length} OF {result.checks.length} CHECKS PASSED</div>
+            {partial && <div className="mono" style={{ fontSize: 11, marginTop: 4 }} data-testid="pp-not-echoed">{PP_NOT_ECHOED.toUpperCase()}</div>}
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Button small variant="secondary" icon="" onClick={() => setShowChecks(!showChecks)} aria-expanded={showChecks}>{showChecks ? 'Hide checks' : 'Show all checks'}</Button>
@@ -51,19 +60,19 @@ function Payoff({ result, paying, onAgain, onNext }) {
             <Button small onClick={onNext}>See readiness</Button>
           </div>
         </div>
-        {showChecks && <div style={{ marginTop: 14 }}><ChecksTable checks={result.checks} /></div>}
+        {showChecks && <div style={{ marginTop: 14 }}><ChecksTable checks={result.checks} rail={rail} /></div>}
       </div>
     );
   }
 
-  const tone = result.outcome === 'already_charged' || result.outcome === 'braintree_unavailable' || result.outcome === 'unknown' || result.outcome === 'capped' ? 'warn' : 'fail';
+  const tone = result.outcome === 'already_charged' || ['already_charged', 'braintree_unavailable', 'paypal_unavailable', 'blocked_other_rail', 'unknown', 'capped'].includes(result.outcome) ? 'warn' : 'fail';
   let headline = 'NOT CHARGED';
   let body = (result.messages || []).join(' ');
   if (result.outcome === 'already_charged') {
     headline = 'ALREADY CHARGED — NO NEW SALE CREATED';
-    body = `Order ${result.orderId} was already charged as transaction ${result.transactionId} (${money(result.amount)}). The ledger stopped a duplicate.`;
+    body = `Order ${result.orderId} was already charged${result.rail ? ` on ${railName}` : ''} as transaction ${result.transactionId} (${money(result.amount)}). The ledger stopped a duplicate.`;
   } else if (result.outcome === 'declined') {
-    headline = 'BRAINTREE REFUSED THE SALE';
+    headline = `${railName.toUpperCase()} REFUSED THE ${rail === 'paypal' ? 'PAYMENT' : 'SALE'}`;
     body = `${result.message}. Nothing was charged; the order can be retried.`;
   } else if (result.outcome === 'refused') {
     headline = 'ORDER REFUSED BEFORE ANY API CALL';
@@ -75,6 +84,13 @@ function Payoff({ result, paying, onAgain, onNext }) {
     body = result.charged === false
       ? 'The request never reached Braintree, so nothing was charged. It is safe to try again.'
       : 'We could not check whether the earlier attempt went through, so nothing new was sent. Trying again checks Braintree first and cannot charge twice.';
+  } else if (result.outcome === 'paypal_unavailable') {
+    headline = 'PAYPAL IS UNAVAILABLE';
+    body = result.charged === false
+      ? 'The request never reached PayPal, so nothing was charged. It is safe to try again.'
+      : 'PayPal did not give a clear answer. Trying again is safe: the retry carries the same idempotency key, so it cannot charge twice.';
+  } else if (result.outcome === 'blocked_other_rail') {
+    headline = 'AN EARLIER ATTEMPT IS UNRESOLVED ON THE OTHER RAIL'; body = result.message;
   } else if (result.outcome === 'unknown') {
     headline = 'BRAINTREE DID NOT ANSWER'; body = 'We could not confirm whether the order went through. It is safe to try again: the next attempt checks Braintree first and cannot charge twice.';
   } else if (result.outcome === 'capped') {
@@ -84,13 +100,14 @@ function Payoff({ result, paying, onAgain, onNext }) {
     <div className={`banner ${tone}`} role="alert" style={{ marginTop: 16 }}>
       <div><div className="mono" style={{ fontWeight: 500, letterSpacing: '0.04em' }}>{headline}</div><div style={{ marginTop: 4 }}>{body}</div></div>
       {result.outcome === 'already_charged' && <Button small onClick={onNext}>See readiness</Button>}
-      {(result.outcome === 'braintree_unavailable' || result.outcome === 'unknown') && <Button small variant="secondary" icon="" disabled={paying} onClick={onAgain}>Try again</Button>}
+      {(result.outcome === 'braintree_unavailable' || result.outcome === 'paypal_unavailable' || result.outcome === 'unknown') && <Button small variant="secondary" icon="" disabled={paying} onClick={onAgain}>Try again</Button>}
     </div>
   );
 }
 
 // Line items "print" into the read-back panel one by one.
 function ReadBack({ result }) {
+  const railName = RAIL_NAME[result.rail || 'braintree'];
   const items = result.lineItemsReturned || [];
   const [shown, setShown] = useState(prefersReducedMotion() ? items.length : 0);
   useEffect(() => {
@@ -100,7 +117,7 @@ function ReadBack({ result }) {
   }, [shown, items.length]);
   return (
     <div className="card">
-      <div className="card-h"><SectionLabel>Visa data read back from Braintree</SectionLabel><Chip kind="sandbox" /></div>
+      <div className="card-h"><SectionLabel>{`Visa data read back from ${railName}`}</SectionLabel><Chip kind="sandbox" /></div>
       <div className="tscroll">
         <table className="t">
           <thead><tr><th className="nw">Product</th><th className="nw">Commodity</th><th className="nw">UoM</th><th className="r">Qty</th><th className="r">Total</th><th className="r">Tax</th><th>Description</th></tr></thead>
@@ -128,7 +145,10 @@ export default function Order({ catalog, state, onNext, onReview }) {
   const [orderId, setOrderId] = useState(null);
   const [result, setResult] = useState(null);
   const [paying, setPaying] = useState(false);
-  const [view, setView] = useState('without'); // default: what a basic Level 1 checkout sends
+  const railOn = !!state?.limits?.rails?.paypal; // the PayPal rail only exists when the server has its credentials
+  const [rail, setRail] = useState('braintree');
+  const view0 = 'without';
+  const [view, setView] = useState(view0); // default: what a basic Level 1 checkout sends
   const [paymentsLeft, setPaymentsLeft] = useState(state?.limits?.paymentsLeft ?? null);
 
   // Input checks in the browser, with the same wording as the server's, so mistakes show next to the line.
@@ -142,7 +162,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
   }), [lines]);
   const problems = lineErrors.filter(Boolean);
   const filled = lines.filter((l) => l.sku);
-  const body = useMemo(() => ({ items: filled, poNumber: po, shipping, taxRatePct: taxPct }), [lines, po, shipping, taxPct]); // eslint-disable-line react-hooks/exhaustive-deps
+  const body = useMemo(() => ({ items: filled, poNumber: po, shipping, taxRatePct: taxPct, rail }), [lines, po, shipping, taxPct, rail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setOrderId(null); setResult(null);
@@ -170,6 +190,8 @@ export default function Order({ catalog, state, onNext, onReview }) {
   const ok = preview?.ok && !problems.length;
   const paid = result?.outcome === 'charged';
   const v = ok ? preview.validation : null;
+  const ppUnit = (l) => (rail === 'paypal' ? ((preview?.paypal?.uomNotes || []).find((n) => n.sku === l.productCode)?.sent || '(omitted)') : l.unitOfMeasure);
+  const railName = RAIL_NAME[rail];
 
   return (
     <section className="section" style={{ paddingTop: 28 }}>
@@ -253,7 +275,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
                       <thead><tr><th className="nw">Product</th><th className="nw">Commodity</th><th className="nw">UoM</th><th className="r">Qty</th><th className="r">Unit</th><th className="r">Total</th><th className="r">Tax</th><th>Description</th></tr></thead>
                       <tbody>
                         {preview.request.lineItems.map((l, i) => (
-                          <tr key={l.productCode} className="print-in" style={{ '--d': `${200 + i * 160}ms` }}><td className="mono nw">{l.productCode}</td><td className="mono nw">{l.commodityCode}</td><td className="mono nw">{l.unitOfMeasure}</td><td className="r mono">{l.quantity}</td><td className="r mono">{l.unitAmount}</td><td className="r mono">{l.totalAmount}</td><td className="r mono">{l.taxAmount}</td><td className="wrap">{l.description}</td></tr>
+                          <tr key={l.productCode} className="print-in" style={{ '--d': `${200 + i * 160}ms` }}><td className="mono nw">{l.productCode}</td><td className="mono nw">{l.commodityCode}</td><td className="mono nw">{ppUnit(l)}</td><td className="r mono">{l.quantity}</td><td className="r mono">{l.unitAmount}</td><td className="r mono">{l.totalAmount}</td><td className="r mono">{l.taxAmount}</td><td className="wrap">{l.description}</td></tr>
                         ))}
                       </tbody>
                     </table>
@@ -269,14 +291,24 @@ export default function Order({ catalog, state, onNext, onReview }) {
 
           <div className="card">
             <div className="card-b">
+              {railOn && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+                  <SectionLabel>Payment rail</SectionLabel>
+                  <div className="seg" role="group" aria-label="Payment rail">
+                    <button aria-pressed={rail === 'braintree'} disabled={paying} onClick={() => setRail('braintree')}>Braintree</button>
+                    <button aria-pressed={rail === 'paypal'} disabled={paying} onClick={() => setRail('paypal')}>PayPal</button>
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Chip kind="sandbox" /><span className="mono" style={{ fontSize: 12 }}>BRAINTREE SANDBOX · TEST CARD ••••0009 · COMMERCIAL</span></div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Chip kind="sandbox" /><span className="mono" style={{ fontSize: 12 }} data-testid="rail-line">{rail === 'paypal' ? 'PAYPAL SANDBOX · TEST CARD ••••1881' : 'BRAINTREE SANDBOX · TEST CARD ••••0009 · COMMERCIAL'}</span></div>
                   <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>The test card and all keys stay on the server. No real money moves.{paymentsLeft !== null && <span className="mono" data-testid="payments-left"> · SANDBOX PAYMENTS LEFT THIS SESSION: {paymentsLeft} OF {state?.limits?.paymentsMax}</span>}</div>
+                  {rail === 'paypal' && <div className="muted" style={{ fontSize: 12, marginTop: 6 }} data-testid="pp-commercial-note">PayPal’s sandbox returns no card BIN data, so this rail does not claim the card was detected as commercial. Units are sent as PayPal words (BOX, PACK, CASE); a unit PayPal does not accept is left out.</div>}
                 </div>
                 {paid
                   ? <Button icon="✓" disabled>Paid</Button>
-                  : <Button disabled={!ok || paying} onClick={() => pay(false)}>{paying ? 'Charging…' : `Pay ${ok ? money(preview.totals.total) : ''} with Braintree sandbox`}</Button>}
+                  : <Button disabled={!ok || paying} onClick={() => pay(false)}>{paying ? 'Charging…' : `Pay ${ok ? money(preview.totals.total) : ''} with ${railName} sandbox`}</Button>}
               </div>
               {result && <Payoff result={result} paying={paying} onAgain={() => pay(true)} onNext={onNext} />}
             </div>
