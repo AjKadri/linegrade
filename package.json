@@ -1,8 +1,8 @@
 {
-  "name": "linegrade-dependency-tests",
+  "name": "linegrade",
   "version": "0.1.0",
   "private": true,
-  "description": "LineGrade core-dependency tests: do the Braintree and PayPal sandboxes accept and return Level 3 card data?",
+  "description": "Invoice-grade card data for B2B sellers: AI-built Level 3 line items on Braintree and PayPal Orders v2 (sandbox).",
   "type": "commonjs",
   "scripts": {
     "test:braintree": "node --env-file=.env braintree-l3-test.js",

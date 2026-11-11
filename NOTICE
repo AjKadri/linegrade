@@ -19,3 +19,5 @@ SYNTHETIC catalog. Live AI re-runs and the full code search need the list and
 are disabled. The saved catalog (data/enriched-catalog.json) records, for the
 codes the AI chose, the code and the title the classifier returned for it.
 Those titles are UNDP's and remain subject to UNDP's terms.
+
+Screenshots of the demo may show UNSPSC titles (© UNDP).
