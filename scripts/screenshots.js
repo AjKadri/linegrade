@@ -186,6 +186,7 @@ async function main() {
   }
   await rp.goto(`${BASE}/?screen=readiness`);
   await rp.waitForSelector('.score');
+  await rp.waitForLoadState('networkidle'); // remote hosts answer slower: let /api/readiness land before reading the score
   const instant = Number(await rp.locator('.score').innerText());
   check('Reduced motion: score shown immediately (no count-up)', instant > 0, `${instant}`);
   const drawAnim = await rp.evaluate(() => getComputedStyle(document.querySelector('.stats.draw .stat'), '::after').animationName);
