@@ -92,7 +92,7 @@ async function main() {
   await page.waitForSelector('.order-grid');
   await page.waitForSelector('.seg');
   check('Order: one SYNTHETIC chip in the top bar only (no header duplicates)', (await page.locator('.chip.synthetic').count()) === 1);
-  check('Order: toggle defaults to WITHOUT LineGrade', (await page.getByRole('button', { name: /without linegrade/i }).getAttribute('aria-pressed')) === 'true');
+  check('Order: toggle defaults to WITHOUT LineGrade', (await page.getByRole('button', { name: 'Without LineGrade', exact: true }).getAttribute('aria-pressed')) === 'true');
   await page.waitForSelector('text=Level 1 · standard rate');
   await page.waitForSelector('.order-grid .kv dt:has-text("Amount")');
   const w = await page.locator('.order-grid .card').nth(1).innerText();
@@ -100,7 +100,7 @@ async function main() {
   check('Order (without): validator readiness 0 / 100', /0 \/ 100/.test(w));
   await shot('04a-order-without.png', false);
 
-  await page.getByRole('button', { name: /with linegrade/i }).click();
+  await page.getByRole('button', { name: 'With LineGrade', exact: true }).click();
   await page.waitForSelector('table.t tbody tr');
   check('Order (with): line items appear with commodity codes', (await page.locator('table.t tbody tr').count()) === 3 && /42132203/.test(await page.locator('table.t').innerText()));
   check('Order (with): $958.05 total and readiness 100 / 100', (await page.locator('.totals').innerText()).includes('958.05') && /100 \/ 100/.test(await page.locator('.order-grid').innerText()));
@@ -110,7 +110,7 @@ async function main() {
   await noHScroll('Order (before pay)');
 
   check('Order: sandbox payments left shown (5 of 5)', /PAYMENTS LEFT THIS SESSION: 5 OF 5/.test(await page.getByTestId('payments-left').innerText()));
-  const payBtn = page.getByRole('button', { name: /pay .*958\.05.* with braintree sandbox/i });
+  const payBtn = page.getByRole('button', { name: /pay .*958\.05 with linegrade data/i });
   await payBtn.click();
   await page.waitForSelector('[data-testid="txn-id"]', { timeout: 30000 });
   await page.waitForSelector('.stamp');
@@ -138,6 +138,29 @@ async function main() {
   await page.waitForSelector('text=/ALREADY CHARGED/');
   check('Order: same order again says ALREADY CHARGED', true);
   await shot('04b-order-duplicate.png');
+  // ---- Without LineGrade really pays without the data (Braintree), then the side-by-side panel ----
+  await page.getByRole('button', { name: 'Without LineGrade', exact: true }).click();
+  const l1Btn = page.getByRole('button', { name: /pay .*958\.05 · level 1 only/i });
+  check('Order (Without): the pay button says "Level 1 only"', await l1Btn.isVisible());
+  check('Order: the old "Paying below always sends" note is gone', (await page.getByText(/paying below always sends/i).count()) === 0);
+  await l1Btn.click();
+  await page.waitForSelector('[data-testid="stamp"]');
+  await page.waitForFunction(() => /SENT · LEVEL 1 ONLY/.test(document.querySelector('[data-testid="stamp"]')?.textContent || ''), null, { timeout: 30000 });
+  const l1Txn = (await page.locator('[data-testid="txn-id"]').innerText()).trim();
+  check('Level 1 (Braintree): "SENT · LEVEL 1 ONLY" with a transaction id, no PASS stamp', /^[a-z0-9]{6,}$/.test(l1Txn) && !/PASS/.test(await page.locator('.payoff').innerText()), l1Txn);
+  check('Level 1 (Braintree): says it would fall to the standard rate (estimate), no observed difference claimed', /would fall to the standard rate \(estimate\)/.test(await page.getByTestId('l1-note').innerText()) && !/saved|saving|observed/i.test(await page.locator('.payoff').innerText()));
+  await page.getByRole('button', { name: 'Show read-back' }).click();
+  const l1Rows = await page.locator('table[aria-label="All read-back checks"] tbody tr').allInnerTexts();
+  check('Level 1 (Braintree): read-back shows no PO, no tax, no line items returned', l1Rows.some((r) => /PO number.*not sent.*none returned/s.test(r)) && l1Rows.some((r) => /Tax amount.*not sent.*none returned/s.test(r)) && l1Rows.some((r) => /Line items returned\s+0\s+0/s.test(r)), `${l1Rows.length} rows`);
+  check('Level 1 (Braintree): the sale used a payment (3 of 5 left)', /PAYMENTS LEFT THIS SESSION: 3 OF 5/.test(await page.getByTestId('payments-left').innerText()));
+  await shot('07a-order-level1-sale.png');
+  const two = page.getByTestId('two-ways');
+  await two.waitFor();
+  const twoText = (await two.innerText()).replace(/\s+/g, ' ');
+  check('Same order, two ways: Level 1 (0 line items, 0 of 8 checks) next to LineGrade (3 line items, PASS n/n)', /Same order, two ways/i.test(twoText) && /LINE ITEMS 0/i.test(twoText) && /CHECKS 0 OF 8/i.test(twoText) && /LINE ITEMS 3/i.test(twoText) && /PASS \d+\/\d+/.test(twoText) && (await page.getByTestId('tw-l1-id').innerText()).trim() === l1Txn, twoText.slice(0, 120));
+  await two.scrollIntoViewIfNeeded();
+  await shot('07b-same-order-two-ways.png');
+  await page.getByRole('button', { name: 'With LineGrade', exact: true }).click();
   await page.getByRole('button', { name: /see readiness/i }).click();
   await page.waitForSelector('.score');
   await page.waitForTimeout(1800);
@@ -198,7 +221,7 @@ async function main() {
   };
   await pg.goto(`${BASE}/?screen=order`, { timeout: 120000 });
   await pg.waitForSelector('.preloader', { state: 'detached', timeout: 8000 }).catch(() => {});
-  await pg.getByRole('button', { name: /with linegrade/i }).click();
+  await pg.getByRole('button', { name: 'With LineGrade', exact: true }).click();
   await pg.waitForSelector('table.t tbody tr');
   if (hz.paypalRail !== 'on') {
     check('PayPal rail hidden: no rail selector on the Order screen (server has no PayPal credentials)', (await pg.getByRole('group', { name: 'Payment rail' }).count()) === 0);
@@ -218,7 +241,7 @@ async function main() {
     const units = await pg.locator('table.t tbody tr td:nth-child(3)').allInnerTexts();
     check('Rails (PayPal): units shown as PayPal words, not EA/BX codes', units.join(',') === 'BOX,PACK,CASE', units.join(','));
     await shotPg('06b-order-rail-paypal.png');
-    await pg.getByRole('button', { name: /pay .*958\.05.* with paypal sandbox/i }).click();
+    await pg.getByRole('button', { name: /pay .*958\.05 with linegrade data/i }).click();
     await pg.waitForSelector('[data-testid="txn-id"]', { timeout: 60000 });
     await pg.waitForSelector('.stamp');
     const capId = (await pg.getByTestId('txn-id').innerText()).trim();
@@ -236,6 +259,18 @@ async function main() {
     await pg.getByRole('button', { name: /submit same order again/i }).click();
     await pg.waitForSelector('.banner');
     check('PayPal: same order again says ALREADY CHARGED on PayPal', /ALREADY CHARGED/.test(await pg.locator('.banner').innerText()) && /PayPal/.test(await pg.locator('.banner').innerText()));
+    // ---- Without LineGrade on the PayPal rail: amount only ----
+    await pg.getByRole('button', { name: 'Without LineGrade', exact: true }).click();
+    await pg.getByRole('button', { name: /pay .*958\.05 · level 1 only/i }).click();
+    await pg.waitForFunction(() => /SENT · LEVEL 1 ONLY/.test(document.querySelector('[data-testid="stamp"]')?.textContent || ''), null, { timeout: 60000 });
+    const ppL1 = (await pg.getByTestId('txn-id').innerText()).trim();
+    check('Level 1 (PayPal): "SENT · LEVEL 1 ONLY" with a capture id and no PASS stamp', /^[A-Z0-9]{10,}$/.test(ppL1) && !/PASS/.test(await pg.locator('.payoff').innerText()), ppL1);
+    await pg.getByRole('button', { name: 'Show read-back' }).click();
+    const ppRows = await pg.locator('table[aria-label="All read-back checks"] tbody tr').allInnerTexts();
+    check('Level 1 (PayPal): read-back shows no Level 2, no Level 3, 0 line items returned', ppRows.some((r) => /Level 2.*not sent.*none returned/s.test(r)) && ppRows.some((r) => /Level 3.*not sent.*none returned/s.test(r)) && ppRows.some((r) => /Line items returned\s+0\s+0/s.test(r)), `${ppRows.length} rows`);
+    await pg.getByTestId('two-ways').waitFor();
+    check('Same order, two ways (PayPal): both capture ids shown', (await pg.getByTestId('tw-l1-id').innerText()).trim() === ppL1 && (await pg.getByTestId('tw-l3-id').innerText()).trim() === capId);
+    await shotPg('07c-order-level1-paypal.png');
     console.log(`        PayPal capture ${capId}`);
   }
   await pctx.close();

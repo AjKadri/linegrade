@@ -55,6 +55,23 @@ function braintreeErrors(result) {
   return lines;
 }
 
+// Level 1 sale (amount + order id only): read it back and show what the card network was NOT given.
+// "pass" here means "as expected for a Level 1 sale" (nothing extra came back); there is no PASS stamp for it.
+async function readBackLevel1(gw, id, req) {
+  const tx = await gw.transaction.find(id);
+  const li = await gw.transactionLineItem.findAll(id);
+  const none = (v) => (v === undefined || v === null || v === '' ? 'none returned' : v);
+  const checks = [
+    { check: 'Sale status', expected: 'accepted', actual: tx.status, pass: OK_STATUSES.includes(tx.status) },
+    { check: 'Amount', expected: req.amount, actual: tx.amount, pass: tx.amount === req.amount },
+    { check: 'PO number', expected: 'not sent', actual: none(tx.purchaseOrderNumber), pass: !tx.purchaseOrderNumber },
+    { check: 'Tax amount', expected: 'not sent', actual: none(tx.taxAmount), pass: !tx.taxAmount },
+    { check: 'Shipping amount and ships-from', expected: 'not sent', actual: none(tx.shippingAmount || tx.shipsFromPostalCode), pass: !tx.shippingAmount && !tx.shipsFromPostalCode },
+    { check: 'Line items returned', expected: '0', actual: String(li.length), pass: li.length === 0 },
+  ];
+  return { checks, lineItems: [], tx: { id: tx.id, status: tx.status, amount: tx.amount, commercial: (tx.creditCard || {}).commercial, cardLast4: (tx.creditCard || {}).last4 } };
+}
+
 // transaction.find + transactionLineItem.findAll, compared with what we sent.
 async function readBack(gw, id, req) {
   const tx = await gw.transaction.find(id);
@@ -97,7 +114,7 @@ async function chargeRequest(request, opts = {}) {
   const log = opts.log || (() => {});
   const ledgerFile = opts.ledgerFile || ledger.DEFAULT_LEDGER;
   const orderId = request.orderId;
-  const gw = gateway();
+  const gw = opts.gateway || gateway(); // opts.gateway: tests only
   let entry = ledger.get(orderId, ledgerFile);
 
   if (entry && entry.status === 'unknown') {
@@ -142,7 +159,7 @@ async function chargeRequest(request, opts = {}) {
     ...request,
     creditCard: { number: opts.card || COMMERCIAL_TEST_CARD, expirationDate: '12/2030', cvv: '123', cardholderName: 'Lab Ops Purchasing' },
   };
-  ledger.set(orderId, { status: 'pending', rail: 'braintree', amount: request.amount, po: request.purchaseOrderNumber, started_at: new Date().toISOString() }, ledgerFile);
+  ledger.set(orderId, { status: 'pending', rail: 'braintree', level: opts.level1 ? 1 : 3, amount: request.amount, po: request.purchaseOrderNumber, started_at: new Date().toISOString() }, ledgerFile);
 
   let result;
   try {
@@ -187,9 +204,9 @@ async function chargeRequest(request, opts = {}) {
   ledger.set(orderId, { status: 'charged', transactionId: id, amount: result.transaction.amount }, ledgerFile);
   log(`\nSale accepted: transaction ID ${id}, status ${result.transaction.status}, amount ${result.transaction.amount} USD`);
   log('\nRead-back (transaction.find + transactionLineItem.findAll):');
-  const rb = await readBack(gw, id, request);
+  const rb = opts.level1 ? await readBackLevel1(gw, id, request) : await readBack(gw, id, request);
   return {
-    outcome: 'charged', orderId, transactionId: id, status: result.transaction.status, amount: result.transaction.amount,
+    outcome: 'charged', level: opts.level1 ? 1 : 3, orderId, transactionId: id, status: result.transaction.status, amount: result.transaction.amount,
     checks: rb.checks, passed: rb.checks.every((c) => c.pass), lineItemsReturned: rb.lineItems, transaction: rb.tx,
   };
 }

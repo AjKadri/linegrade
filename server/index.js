@@ -317,8 +317,11 @@ function createApp(opts = {}) {
     const order = parseOrder(req.body);
     const rail = parseRail(req.body);
     const railName = rail === 'paypal' ? 'PayPal' : 'Braintree';
+    // level 1 = "Without LineGrade": a basic sale (amount + order id only). level 3 (default) = full Level 2/3 data.
+    if (req.body.level !== undefined && ![1, 3].includes(Number(req.body.level))) throw new HttpError(400, 'Level must be 1 or 3.', { code: 'INVALID_INPUT', field: 'level' });
+    const level1 = Number(req.body.level) === 1;
     const clientId = typeof req.body.orderId === 'string' && ORDER_ID_RE.test(req.body.orderId) ? req.body.orderId : `LG-UI-${Date.now().toString(36).toUpperCase()}`;
-    const orderId = `${session.id.slice(0, 6)}-${clientId}`;
+    const orderId = `${session.id.slice(0, 6)}-${clientId}${level1 ? '-L1' : ''}`; // a Level 1 sale is its own order id
     const existing = ledger.get(orderId, st.ledgerFile) || {};
     const already = existing.status === 'charged'; // on either rail
     if (!already) {
@@ -334,19 +337,21 @@ function createApp(opts = {}) {
       throw e;
     }
     const messages = [];
-    let result; let validation = validationView(orderReadiness(request).after);
+    let result; const rd = orderReadiness(request); let validation = validationView(level1 ? rd.before : rd.after);
     if (rail === 'paypal') {
       const catalog = loadCatalog(st.activePath());
-      validation = withRailCheck(validation, paypal.validatePayPalRail(request, catalog));
-      result = await paypal.chargePayPal(request, catalog, { ledgerFile: st.ledgerFile, log: (l) => messages.push(l) });
+      if (!level1) validation = withRailCheck(validation, paypal.validatePayPalRail(request, catalog));
+      result = await paypal.chargePayPal(request, catalog, { ledgerFile: st.ledgerFile, log: (l) => messages.push(l), level1 });
     } else if (existing.rail === 'paypal' && ['pending', 'unknown'].includes(existing.status)) {
       // An unresolved PayPal attempt for this order id: never charge it on Braintree as well.
       result = { outcome: 'blocked_other_rail', orderId, rail: 'paypal', message: 'This order id has an unresolved attempt on PayPal. Retry it on PayPal first, so the order cannot be charged twice.' };
     } else {
-      result = await chargeRequest(request, { ledgerFile: st.ledgerFile, log: (l) => messages.push(l) });
+      // Level 1: only the amount and the order id go to Braintree.
+      const toSend = level1 ? { amount: request.amount, orderId: request.orderId, options: { submitForSettlement: true } } : request;
+      result = await chargeRequest(toSend, { ledgerFile: st.ledgerFile, log: (l) => messages.push(l), level1 });
     }
     if (COUNTED.has(result.outcome) || (result.outcome === 'paypal_unavailable' && result.charged === 'unknown')) { session.payments += 1; usage.add({ payments: 1 }); }
-    res.json({ ...result, rail: result.rail || (result.outcome === 'already_charged' ? existing.rail || 'braintree' : rail), request, messages, sandbox: true, validation, paymentsLeft: Math.max(0, config().maxPaymentsSession - session.payments) });
+    res.json({ ...result, level: result.level || (level1 ? 1 : 3), rail: result.rail || (result.outcome === 'already_charged' ? existing.rail || 'braintree' : rail), request, messages, sandbox: true, validation, paymentsLeft: Math.max(0, config().maxPaymentsSession - session.payments) });
   }));
 
   // Readiness: validator-based scores for the demo order (Level 1 before, Level 2/3 after) and the catalog,

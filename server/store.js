@@ -28,10 +28,10 @@ function forSession(session) {
   };
 }
 
-/** Charged orders in a ledger object that were started at or after `sinceIso`, oldest first. */
+/** LineGrade (Level 3) orders in a ledger object that were charged and started at or after `sinceIso`, oldest first. Level 1 sales are not counted. */
 function sessionOrders(ledgerObj, sinceIso) {
   return Object.entries(ledgerObj)
-    .filter(([, v]) => v.status === 'charged' && (v.started_at || v.updated_at || '') >= sinceIso)
+    .filter(([, v]) => v.status === 'charged' && v.level !== 1 && (v.started_at || v.updated_at || '') >= sinceIso)
     .sort((a, b) => (a[1].started_at || a[1].updated_at).localeCompare(b[1].started_at || b[1].updated_at));
 }
 

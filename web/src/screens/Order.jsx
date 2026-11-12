@@ -39,6 +39,27 @@ function Payoff({ result, paying, onAgain, onNext }) {
 
   const rail = result.rail || 'braintree';
   const railName = RAIL_NAME[rail];
+  if (result.outcome === 'charged' && result.level === 1) {
+    // A Level 1 sale: no PASS stamp. It shows what the card network was NOT given. Never claims an observed fee difference.
+    return (
+      <div className="payoff-wrap" aria-live="polite">
+        <div className="payoff">
+          <span className="stamp l1" data-testid="stamp">SENT · LEVEL 1 ONLY</span>
+          <div>
+            <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.06em' }}>{rail === 'paypal' ? 'PAYPAL CAPTURE ID' : 'TRANSACTION ID'}</div>
+            <div className="mono" style={{ fontSize: 22 }} data-testid="txn-id">{result.transactionId}</div>
+            <div className="mono muted" style={{ fontSize: 11 }}>{rail === 'paypal' ? `ORDER ${result.paypalOrderId} · ` : ''}{result.status} · {money(result.amount)} · SANDBOX · AMOUNT AND ORDER ID ONLY</div>
+            <div style={{ fontSize: 13, marginTop: 6, maxWidth: 560 }} data-testid="l1-note">Card networks receive no line items, so this sale would fall to the standard rate (estimate).</div>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button small variant="secondary" icon="" onClick={() => setShowChecks(!showChecks)} aria-expanded={showChecks}>{showChecks ? 'Hide read-back' : 'Show read-back'}</Button>
+            <Button small variant="secondary" icon="" disabled={paying} onClick={onAgain}>Submit same order again</Button>
+          </div>
+        </div>
+        {showChecks && <div style={{ marginTop: 14 }}><ChecksTable checks={result.checks} rail={rail} /></div>}
+      </div>
+    );
+  }
   if (result.outcome === 'charged') {
     const failed = result.checks.filter((c) => !c.pass);
     // PayPal: only claim a full read-back if PayPal really returned Level 3. Otherwise say what we know.
@@ -105,6 +126,30 @@ function Payoff({ result, paying, onAgain, onNext }) {
   );
 }
 
+// After a Level 1 and a LineGrade sale of the same order: the two results next to each other. Codes and counts only.
+function SameOrderTwoWays({ l1, l3, before }) {
+  const lineCount = (l3.lineItemsReturned || []).length || 3;
+  const full = l3.checks.every((c) => c.pass);
+  const partial = (l3.rail || 'braintree') === 'paypal' && !l3.level3Echoed;
+  return (
+    <div className="card" data-testid="two-ways">
+      <div className="card-h"><SectionLabel>Same order, two ways</SectionLabel><Chip kind="sandbox" /></div>
+      <div className="two-ways">
+        <div>
+          <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.08em' }}>LEVEL 1</div>
+          <div className="mono" style={{ fontSize: 18, marginTop: 6 }} data-testid="tw-l1-id">{l1.transactionId}</div>
+          <dl className="kv" style={{ marginTop: 10 }}><dt>Line items</dt><dd className="mono">0</dd><dt>Checks</dt><dd className="mono">{before ? `${before.passed} OF ${before.total}` : '0 OF 8'}</dd></dl>
+        </div>
+        <div>
+          <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.08em' }}>LINEGRADE</div>
+          <div className="mono" style={{ fontSize: 18, marginTop: 6 }} data-testid="tw-l3-id">{l3.transactionId}</div>
+          <dl className="kv" style={{ marginTop: 10 }}><dt>Line items</dt><dd className="mono">{lineCount}</dd><dt>Checks</dt><dd className="mono">{!full ? 'FAIL' : partial ? 'ACCEPTED' : `PASS ${l3.checks.length}/${l3.checks.length}`}</dd></dl>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Line items "print" into the read-back panel one by one.
 function ReadBack({ result }) {
   const railName = RAIL_NAME[result.rail || 'braintree'];
@@ -143,7 +188,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
   const [preview, setPreview] = useState(null);
   const [perr, setPerr] = useState(null);
   const [orderId, setOrderId] = useState(null);
-  const [result, setResult] = useState(null);
+  const [sales, setSales] = useState({ 1: null, 3: null }); // the Level 1 and the LineGrade sale of the current order
   const [paying, setPaying] = useState(false);
   const railOn = !!state?.limits?.rails?.paypal; // the PayPal rail only exists when the server has its credentials
   const [rail, setRail] = useState('braintree');
@@ -165,7 +210,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
   const body = useMemo(() => ({ items: filled, poNumber: po, shipping, taxRatePct: taxPct, rail }), [lines, po, shipping, taxPct, rail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setOrderId(null); setResult(null);
+    setOrderId(null); setSales({ 1: null, 3: null });
     if (!body.items.length || problems.length) { setPreview(null); setPerr(null); return undefined; }
     const t = setTimeout(async () => {
       try { setPreview(await api.preview(body)); setPerr(null); } catch (e) { setPreview(null); setPerr(e.message); }
@@ -173,11 +218,14 @@ export default function Order({ catalog, state, onNext, onReview }) {
     return () => clearTimeout(t);
   }, [body]);
 
+  const level = view === 'with' ? 3 : 1; // paying sends what the selected view shows
+  const result = sales[level];
+  const setResult = (r) => setSales((x) => ({ ...x, [level]: r }));
   const pay = async (again) => {
     const id = again && orderId ? orderId : (orderId || newOrderId());
     setOrderId(id); setPaying(true); setResult(null);
     try {
-      const r = await api.pay({ ...body, orderId: id });
+      const r = await api.pay({ ...body, orderId: id, level });
       setResult(r);
       if (typeof r.paymentsLeft === 'number') setPaymentsLeft(r.paymentsLeft);
     } catch (e) {
@@ -240,7 +288,6 @@ export default function Order({ catalog, state, onNext, onReview }) {
               {v && <span className="mono muted" style={{ fontSize: 11, letterSpacing: '0.04em' }}>
                 DATA READINESS {view === 'without' ? `${v.before.score} / 100 · ${v.before.passed} OF ${v.before.total} CHECKS` : `${v.after.score} / 100 · ${v.after.passed} OF ${v.after.total} CHECKS`}
               </span>}
-              <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>Paying below always sends the “With LineGrade” data.</span>
             </div>
             <div className="card-b" style={{ padding: 0 }}>
               {perr && <div className="banner fail" style={{ margin: 16 }}><span>{perr}</span></div>}
@@ -308,13 +355,14 @@ export default function Order({ catalog, state, onNext, onReview }) {
                 </div>
                 {paid
                   ? <Button icon="✓" disabled>Paid</Button>
-                  : <Button disabled={!ok || paying} onClick={() => pay(false)}>{paying ? 'Charging…' : `Pay ${ok ? money(preview.totals.total) : ''} with ${railName} sandbox`}</Button>}
+                  : <Button disabled={!ok || paying} onClick={() => pay(false)}>{paying ? 'Charging…' : level === 1 ? `Pay ${ok ? money(preview.totals.total) : ''} · Level 1 only` : `Pay ${ok ? money(preview.totals.total) : ''} with LineGrade data`}</Button>}
               </div>
               {result && <Payoff result={result} paying={paying} onAgain={() => pay(true)} onNext={onNext} />}
             </div>
           </div>
 
-          {paid && <ReadBack result={result} />}
+          {paid && result.level !== 1 && <ReadBack result={result} />}
+          {sales[1]?.outcome === 'charged' && sales[3]?.outcome === 'charged' && <SameOrderTwoWays l1={sales[1]} l3={sales[3]} before={preview?.validation?.before} />}
         </div>
       </div>
     </section>

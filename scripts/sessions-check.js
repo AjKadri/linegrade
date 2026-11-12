@@ -57,10 +57,10 @@ async function main() {
   await Promise.all([A, B].map(async (x) => {
     await x.page.goto(`${BASE}/?screen=order`, { timeout: 60000 });
     await x.page.waitForSelector('.seg');
-    await x.page.getByRole('button', { name: /with linegrade/i }).click();
+    await x.page.getByRole('button', { name: 'With LineGrade', exact: true }).click();
     await x.page.waitForSelector('table.t tbody tr');
   }));
-  await Promise.all([A, B].map((x) => x.page.getByRole('button', { name: /pay .*with braintree sandbox/i }).click()));
+  await Promise.all([A, B].map((x) => x.page.getByRole('button', { name: /pay .*with linegrade data/i }).click()));
   await Promise.all([A, B].map((x) => x.page.waitForSelector('[data-testid="txn-id"]', { timeout: 60000 })));
   const txA = (await A.page.locator('[data-testid="txn-id"]').innerText()).trim();
   const txB = (await B.page.locator('[data-testid="txn-id"]').innerText()).trim();

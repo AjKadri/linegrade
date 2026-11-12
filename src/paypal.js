@@ -168,6 +168,11 @@ function buildPayPalOrder(request, catalog, card = TEST_CARD) {
   return { body, uomNotes };
 }
 
+/** A basic Level 1 Orders v2 body: the amount and the card, nothing else (no items, breakdown, shipping or supplementary_data). */
+function buildPayPalLevel1(request, card = TEST_CARD) {
+  return { body: { intent: 'CAPTURE', payment_source: { card: { ...card } }, purchase_units: [{ amount: { currency_code: 'USD', value: request.amount } }] }, uomNotes: [] };
+}
+
 /** PayPal-rail validation (runs only on this rail): everything buildPayPalOrder needs, as readable problems. */
 function validatePayPalRail(request, catalog) {
   const problems = [];
@@ -252,6 +257,22 @@ function readBackChecks(sent, got) {
   return { checks, lineItemsReturned, level3Echoed, level2Echoed: !!l2, fieldsReturned: keyPaths(got).sort() };
 }
 
+/** Read-back of a Level 1 order: shows that no Level 2/3 data and no line items came back. "pass" = as expected for Level 1. */
+function readBackChecksLevel1(sent, got) {
+  const checks = [];
+  const add = (check, expected, actual, pass) => checks.push({ check, expected, actual: actual === undefined ? 'none returned' : actual, pass: !!pass });
+  const pu = (got.purchase_units || [])[0] || {};
+  const cap = ((pu.payments || {}).captures || [])[0] || {};
+  add('Order status', 'COMPLETED', got.status, got.status === 'COMPLETED');
+  add('Capture status', 'COMPLETED', cap.status, cap.status === 'COMPLETED');
+  add('Amount', sent.purchase_units[0].amount.value, money(pu.amount), money(pu.amount) === sent.purchase_units[0].amount.value);
+  const sd = pu.supplementary_data;
+  add('Level 2 (invoice id, tax)', 'not sent', sd && sd.card && sd.card.level_2 ? 'returned' : 'none returned', !(sd && sd.card && sd.card.level_2));
+  add('Level 3 (shipping, ships-from)', 'not sent', sd && sd.card && sd.card.level_3 ? 'returned' : 'none returned', !(sd && sd.card && sd.card.level_3));
+  add('Line items returned', '0', String((pu.items || []).length), (pu.items || []).length === 0);
+  return { checks, lineItemsReturned: [], level3Echoed: false, level2Echoed: false, fieldsReturned: keyPaths(got).sort() };
+}
+
 // ---------- charge ----------
 const failedLike = (o) => o === 'declined' || o === 'paypal_unavailable';
 
@@ -281,11 +302,11 @@ async function chargePayPal(request, catalog, opts = {}) {
 
   const card = opts.card || TEST_CARD;
   let built;
-  try { built = buildPayPalOrder(request, catalog, card); } catch (e) {
+  try { built = opts.level1 ? buildPayPalLevel1(request, card) : buildPayPalOrder(request, catalog, card); } catch (e) {
     return { outcome: 'declined', rail: 'paypal', orderId, message: e.message, details: [], notSent: true };
   }
   const { body, uomNotes } = built;
-  ledger.set(orderId, { status: 'pending', rail: 'paypal', attempt, definitive: false, amount: request.amount, po: request.purchaseOrderNumber, started_at: new Date().toISOString() }, ledgerFile);
+  ledger.set(orderId, { status: 'pending', rail: 'paypal', level: opts.level1 ? 1 : 3, attempt, definitive: false, amount: request.amount, po: request.purchaseOrderNumber, started_at: new Date().toISOString() }, ledgerFile);
   for (const n of uomNotes) if (n.note) log(`      ${n.sku}: ${n.note}`);
 
   const unavailable = (e, certainNotCharged) => {
@@ -335,10 +356,10 @@ async function chargePayPal(request, catalog, opts = {}) {
   try {
     const got = await api('GET', `/v2/checkout/orders/${order.id}`);
     if (got.status >= 300) readBackError = `HTTP ${got.status}`;
-    else rb = { ...readBackChecks(body, got.json), card: (got.json.payment_source || {}).card || null };
+    else rb = { ...(opts.level1 ? readBackChecksLevel1(body, got.json) : readBackChecks(body, got.json)), card: (got.json.payment_source || {}).card || null };
   } catch (e) { readBackError = e.message; }
   const out = {
-    outcome: 'charged', rail: 'paypal', orderId, transactionId: capture.id || order.id, paypalOrderId: order.id, status: capture.status || order.status, amount: request.amount,
+    outcome: 'charged', rail: 'paypal', level: opts.level1 ? 1 : 3, orderId, transactionId: capture.id || order.id, paypalOrderId: order.id, status: capture.status || order.status, amount: request.amount,
     debugId: created.debugId, uomNotes, readBackError,
     checks: rb ? rb.checks : [], passed: rb ? rb.checks.every((c) => c.pass) : false,
     lineItemsReturned: rb ? rb.lineItemsReturned : [], level3Echoed: rb ? rb.level3Echoed : false, level2Echoed: rb ? rb.level2Echoed : false, fieldsReturned: rb ? rb.fieldsReturned : [],
@@ -348,6 +369,6 @@ async function chargePayPal(request, catalog, opts = {}) {
 }
 
 module.exports = {
-  chargePayPal, buildPayPalOrder, validatePayPalRail, mapUom, railStatus, readBackChecks, requestId, accessToken,
+  chargePayPal, buildPayPalOrder, buildPayPalLevel1, validatePayPalRail, mapUom, railStatus, readBackChecks, requestId, accessToken,
   PAYPAL_UOM_ALLOWED, SHORT_TO_PAYPAL, TEST_CARD, PayPalError, failedLike,
 };

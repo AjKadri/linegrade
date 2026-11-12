@@ -67,9 +67,9 @@ async function main() {
 
     await p1.goto(`${s1.base}/?screen=order`);
     await p1.waitForSelector('.seg');
-    await p1.getByRole('button', { name: /with linegrade/i }).click();
+    await p1.getByRole('button', { name: 'With LineGrade', exact: true }).click();
     await p1.waitForSelector('table.t tbody tr');
-    await p1.getByRole('button', { name: /pay .*with braintree sandbox/i }).click();
+    await p1.getByRole('button', { name: /pay .*with linegrade data/i }).click();
     await p1.waitForSelector('text=/BRAINTREE IS UNAVAILABLE/', { timeout: 20000 });
     const bt = (await p1.locator('.banner').filter({ hasText: 'BRAINTREE IS UNAVAILABLE' }).innerText()).replace(/\s+/g, ' ');
     check('Braintree unavailable: clear error, says nothing was charged and it is safe to retry', /never reached Braintree/.test(bt) && /nothing was charged/.test(bt) && /safe to try again/.test(bt), bt);
@@ -116,9 +116,9 @@ async function main() {
     await shot(p2, 'f5-cap-live-ai.png');
     await p2.goto(`${s2.base}/?screen=order`);
     await p2.waitForSelector('.seg');
-    await p2.getByRole('button', { name: /with linegrade/i }).click();
+    await p2.getByRole('button', { name: 'With LineGrade', exact: true }).click();
     await p2.waitForSelector('table.t tbody tr');
-    await p2.getByRole('button', { name: /pay .*with braintree sandbox/i }).click();
+    await p2.getByRole('button', { name: /pay .*with linegrade data/i }).click();
     await p2.waitForSelector('text=/LIMIT REACHED/', { timeout: 20000 });
     const pc = (await p2.locator('.banner').filter({ hasText: 'LIMIT REACHED' }).innerText()).replace(/\s+/g, ' ');
     check('Cap (payments): clear message; nothing was sent to Braintree', /used your 0 sandbox payments/.test(pc), pc);
