@@ -53,7 +53,7 @@ async function main() {
     await p1.waitForFunction(() => /^40 \/ 40$/.test(document.querySelector('.counter')?.textContent.trim() || ''), null, { timeout: 15000 });
     const before = await catalogOf(p1);
     await p1.getByLabel(/force: re-classify all unlocked rows/i).check();
-    await p1.getByRole('button', { name: /re-run ai/i }).click();
+    await p1.getByRole('button', { name: /(re-run ai|run ai on this catalog)/i }).click();
     await p1.waitForSelector('[data-testid="enrich-notice"]', { timeout: 20000 });
     const notice = (await p1.getByTestId('enrich-notice').innerText()).trim();
     check('AI unavailable: clear message, run abandoned', /AI provider is unavailable/.test(notice) && /nothing was changed/i.test(notice), notice);
@@ -83,7 +83,7 @@ async function main() {
     const qty = p1.getByLabel('Line 1 quantity');
     await qty.fill('0');
     await p1.waitForSelector('[data-testid="order-problems"]');
-    check('Input: quantity 0 shows an error next to the line and blocks paying', /quantity must be from 1 to 1000/.test(await p1.locator('.field-error').first().innerText()) && await p1.getByRole('button', { name: /with braintree sandbox/i }).isDisabled());
+    check('Input: quantity 0 shows an error next to the line and blocks paying', /quantity must be from 1 to 1000/.test(await p1.locator('.field-error').first().innerText()) && await p1.getByRole('button', { name: /^pay /i }).isDisabled());
     await shot(p1, 'f3-input-quantity-error.png');
     await qty.fill('');
     check('Input: empty quantity says "enter a quantity"', /enter a quantity/.test(await p1.locator('.field-error').first().innerText()));
@@ -107,7 +107,7 @@ async function main() {
     await p2.goto(`${s2.base}/?screen=enrich`);
     await p2.waitForFunction(() => /^40 \/ 40$/.test(document.querySelector('.counter')?.textContent.trim() || ''), null, { timeout: 15000 });
     const lim = (await p2.getByTestId('ai-limits').innerText()).replace(/\s+/g, ' ');
-    check('Cap (live AI): clear message on screen, button disabled', /NO LIVE AI RE-RUNS LEFT THIS SESSION \(0\)/.test(lim) && /REPLAY ONLY/.test(lim) && await p2.getByRole('button', { name: /re-run ai/i }).isDisabled(), lim);
+    check('Cap (live AI): clear message on screen, button disabled', /NO LIVE AI RE-RUNS LEFT THIS SESSION \(0\)/.test(lim) && /REPLAY ONLY/.test(lim) && await p2.getByRole('button', { name: /(re-run ai|run ai on this catalog)/i }).isDisabled(), lim);
     const server429 = await p2.evaluate(async () => { const r = await fetch('/api/enrich/stream'); return { status: r.status, body: await r.json() }; });
     check('Cap (live AI): the server answers 429 CAP_REACHED with a plain message', server429.status === 429 && server429.body.code === 'CAP_REACHED' && /frozen-catalog replay still works/.test(server429.body.error), server429.body.error);
     await p2.getByRole('button', { name: /replay frozen catalog/i }).click();
@@ -148,7 +148,7 @@ async function main() {
     await p4.goto(`${s4.base}/?screen=order`);
     await p4.waitForSelector('.seg');
     await s4.stop(); // the free instance goes to sleep
-    await p4.getByRole('button', { name: 'Readiness' }).click();
+    await p4.getByRole('button', { name: 'Readiness', exact: true }).click();
     await p4.waitForSelector('[data-testid="wake-screen"]', { timeout: 15000 });
     const wakeText = (await p4.getByTestId('wake-screen').innerText()).replace(/\s+/g, ' ');
     check('Waking up: the screen appears when the server stops answering', /WAKING UP THE DEMO/.test(wakeText) && /ABOUT A MINUTE/.test(wakeText), wakeText.slice(0, 80));
@@ -164,7 +164,7 @@ async function main() {
     await p5.goto(`${s5.base}/?screen=order&wakestuck=4`);
     await p5.waitForSelector('.seg');
     await s5.stop();
-    await p5.getByRole('button', { name: 'Readiness' }).click();
+    await p5.getByRole('button', { name: 'Readiness', exact: true }).click();
     await p5.waitForSelector('[data-testid="wake-screen"]', { timeout: 15000 });
     await p5.waitForSelector('[data-testid="wake-retry"]', { timeout: 20000 });
     const stuckText = (await p5.getByTestId('wake-screen').innerText()).replace(/\s+/g, ' ');
