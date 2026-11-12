@@ -93,7 +93,7 @@ async function main() {
   check('Review: handled rows stay in the grid (approved with a tick and "APPROVED · LOCKED", excluded as EXCLUDED)', visibleIds === needs0 && approvedChips + excludedChips === needs0 && approvedChips > 0 && excludedChips > 0, `${visibleIds} rows, ${approvedChips} approved, ${excludedChips} excluded`);
   const exclRows = await page.locator('.ag-row .chip.excluded').evaluateAll((els) => els.map((e) => ({ text: e.textContent.trim(), tick: /✓|APPROVED|LOCKED/.test(e.closest('.ag-row').textContent) })));
   check('Review: excluded rows (NLS-028/038/039/040) read "EXCLUDED", with no tick and no "APPROVED · LOCKED"', exclRows.length === 4 && exclRows.every((r) => r.text === 'EXCLUDED' && !r.tick), JSON.stringify(exclRows.map((r) => r.text)));
-  const statVals = await page.locator('.stats .stat').evaluateAll((els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  const statVals = await page.locator('.stats .stat').evaluateAll((els) => els.map((e) => `${e.querySelector('.n').textContent.trim()} ${e.querySelector('.k').textContent.trim()}`));
   check('Review: header counts split into Approved (1) and Excluded (4)', statVals.some((t) => /^1 Approved$/i.test(t)) && statVals.some((t) => /^4 Excluded$/i.test(t)) && !statVals.some((t) => /Approved & locked/i.test(t)), statVals.join(' | '));
   check('Review: banner says approved and excluded rows are locked', /Approved and excluded rows are locked/.test(await page.locator('.banner', { hasText: 'ALL FLAGGED ROWS REVIEWED' }).innerText()));
   await page.locator('.ag-row[row-id="NLS-040"]').click();
