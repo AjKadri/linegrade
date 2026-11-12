@@ -206,6 +206,10 @@ export default function Order({ catalog, state, onNext, onReview }) {
     return null;
   }), [lines]);
   const problems = lineErrors.filter(Boolean);
+  // The demo order is already loaded; the button only appears once the order has been edited.
+  const isDemo = po === 'PO-77812' && Number(shipping) === 25 && Number(taxPct) === 8
+    && JSON.stringify(lines.filter((l) => l.sku).map((l) => [l.sku, Number(l.qty)]).sort()) === JSON.stringify(DEMO_LINES.map((l) => [l.sku, l.qty]).sort());
+  const resetDemo = () => { setLines(DEMO_LINES); setPo('PO-77812'); setShipping('25.00'); setTaxPct('8'); };
   const filled = lines.filter((l) => l.sku);
   const body = useMemo(() => ({ items: filled, poNumber: po, shipping, taxRatePct: taxPct, rail }), [lines, po, shipping, taxPct, rail]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -247,7 +251,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
       <h2 className="h-l" style={{ marginBottom: 24 }}>Place a business-card order</h2>
       <div className="order-grid">
         <div className="card">
-          <div className="card-h"><SectionLabel>Order builder</SectionLabel><button className="btn small secondary" onClick={() => setLines(DEMO_LINES)}>Load $958 demo order</button></div>
+          <div className="card-h"><SectionLabel>Order builder</SectionLabel>{!isDemo && <button className="btn small secondary" onClick={resetDemo}>Reset to $958 demo order</button>}</div>
           <div className="card-b" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="lines">
               {lines.map((l, i) => (

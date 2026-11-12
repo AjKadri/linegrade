@@ -26,8 +26,8 @@ The deployed demo **replays a saved AI run** (see "Honest labels"), so nothing b
 
 1. Open https://linegrade.onrender.com and click **Load demo catalog**. The 40-line synthetic catalog streams in, labelled **REPLAY**.
 2. Click **Continue to review**. It opens on the 5 flagged rows ("5 needs review"). Approve or exclude each one (fee and bundle lines should be excluded).
-3. Go to **Order + pay** and click **Load $958 demo order**. Flip **Without LineGrade / With LineGrade** to see what the card network receives with and without the data.
-4. Pick a **Payment rail** (Braintree or PayPal), then **Pay $958.05 with … sandbox**. A sandbox payment is made and read back; the stamp shows how many checks passed. Submit the same order again to see the duplicate guard.
+3. Go to **Order + pay**. The $958 demo order is already loaded (edit it and a **Reset to $958 demo order** button appears). Flip **Without LineGrade / With LineGrade** to see what the card network receives with and without the data.
+4. Pick a **Payment rail** (Braintree or PayPal). **Pay $958.05 · Level 1 only** sends a basic sale (amount only), and **Pay $958.05 with LineGrade data** sends the full Level 2/3 payload; both are sandbox payments that are read back. Do both for the same order and a **Same order, two ways** panel compares them. Submit the same order again to see the duplicate guard.
 5. Open **Readiness** for the before/after data scores and the fee **estimate** (change the yearly-volume slider).
 
 Each browser gets its own session, so other visitors never see your changes. Sessions expire after 2 hours idle.

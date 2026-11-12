@@ -107,6 +107,14 @@ async function main() {
   await page.waitForSelector('.seg');
   check('Order: one SYNTHETIC chip in the top bar only (no header duplicates)', (await page.locator('.chip.synthetic').count()) === 1);
   check('Order: toggle defaults to WITHOUT LineGrade', (await page.getByRole('button', { name: 'Without LineGrade', exact: true }).getAttribute('aria-pressed')) === 'true');
+  const resetBtn = page.getByRole('button', { name: 'Reset to $958 demo order', exact: true });
+  check('Order: the demo order is already loaded, so no demo button is shown', (await resetBtn.count()) === 0 && (await page.getByRole('button', { name: /load \$958/i }).count()) === 0);
+  await page.getByLabel('Line 1 quantity').fill('26');
+  await resetBtn.waitFor({ timeout: 5000 });
+  check('Order: after an edit the "Reset to $958 demo order" button appears', await resetBtn.isVisible());
+  await resetBtn.click();
+  await page.waitForFunction(() => document.querySelector('input[aria-label="Line 1 quantity"]')?.value === '25', null, { timeout: 5000 });
+  check('Order: Reset puts the demo order back (qty 25) and hides the button again', (await page.getByLabel('Line 1 quantity').inputValue()) === '25' && (await resetBtn.count()) === 0);
   await page.waitForSelector('text=Level 1 · standard rate');
   await page.waitForSelector('.order-grid .kv dt:has-text("Amount")');
   const w = await page.locator('.order-grid .card').nth(1).innerText();
