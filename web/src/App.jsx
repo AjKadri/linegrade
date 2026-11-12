@@ -32,6 +32,7 @@ export default function App() {
   // API-level hiccup cannot trap anyone behind it. The screen leaves as soon as the server answers.
   const [wakeInfo, setWakeInfo] = useState({ since: Date.now(), detail: null });
   const gen = useRef(0);
+  const dismissedAt = useRef(0);
   const running = useRef(false);
   const wake = useCallback(async ({ immediate = false, restart = false } = {}) => {
     if (running.current && !restart) return;
@@ -53,7 +54,7 @@ export default function App() {
   useEffect(() => {
     wake({ immediate: true });
     const offline = () => { wake(); };
-    const gone = () => setExpired(true);
+    const gone = () => { if (Date.now() - dismissedAt.current > 15_000) setExpired(true); }; // late answers to requests sent before the new cookie was stored must not bring the banner back
     window.addEventListener('lg:offline', offline);
     window.addEventListener('lg:session-expired', gone);
     return () => { gen.current += 1; window.removeEventListener('lg:offline', offline); window.removeEventListener('lg:session-expired', gone); };
@@ -67,7 +68,7 @@ export default function App() {
   const loadDemo = async () => { setLoading(true); try { await reload(); go('enrich'); } catch (e) { setError(e.message); } finally { setLoading(false); } };
   const restart = async () => { await api.reset(); setCatalog(null); await reload(); go('landing'); };
 
-  const restartFromFrozen = async () => { setExpired(false); setCatalog(null); await reload().catch(() => {}); go('landing'); };
+  const restartFromFrozen = async () => { dismissedAt.current = Date.now(); setExpired(false); setCatalog(null); await reload().catch(() => {}); go('landing'); };
   const ready = !!catalog;
   const counts = catalog ? state?.counts : null;
 

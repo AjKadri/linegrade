@@ -23,6 +23,7 @@ class SessionManager {
   constructor({ dir, idleMs = 7_200_000, maxSessions = 500, now = () => Date.now() }) {
     this.dir = dir; this.idleMs = idleMs; this.maxSessions = maxSessions; this.now = now;
     this.sessions = new Map();
+    this.replaced = new Map(); // stale cookie id -> the session that replaced it (60 s), so concurrent requests agree
   }
 
   /** Start clean: delete every session directory left by an earlier run. */
@@ -76,7 +77,17 @@ class SessionManager {
     return (req, res, next) => {
       const presented = parseCookies(req.headers.cookie)[COOKIE];
       let s = this.get(presented);
-      req.sessionExpired = !s && !!presented; // a cookie we no longer know: expired or the server restarted
+      req.sessionExpired = false;
+      if (!s && presented) {
+        // A cookie we no longer know (expired, or the server restarted). Several requests can arrive carrying the same stale
+        // cookie before the browser has stored the new one: they all join the ONE replacement session, and only the
+        // first answer carries the "expired" flag.
+        const t = this.now();
+        for (const [k, v] of this.replaced) if (t - v.t > 60_000) this.replaced.delete(k);
+        const known = this.replaced.get(presented);
+        s = known ? this.get(known.sid) : null;
+        if (!s) { s = this.create(); this.replaced.set(presented, { sid: s.id, t }); req.sessionExpired = true; }
+      }
       if (!s) s = this.create();
       this.touch(s);
       req.session = s;
