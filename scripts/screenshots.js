@@ -85,6 +85,20 @@ async function main() {
     needs = Number(await page.locator('.stats .stat .n').first().innerText());
   }
   check('Review: all needs-review rows approved or excluded', needs === 0, `${steps} actions`);
+  // approved/excluded rows stay visible for the visit, with the tick and "APPROVED · LOCKED" (or EXCLUDED)
+  const visibleIds = await page.evaluate(() => new Set([...document.querySelectorAll('.ag-row[row-id]')].map((r) => r.getAttribute('row-id'))).size);
+  const approvedChips = await page.getByTestId('approved-chip').count();
+  const excludedChips = await page.locator('.ag-row .chip.excluded').count();
+  check('Review: handled rows stay in the grid (approved with a tick and "APPROVED · LOCKED", excluded as EXCLUDED)', visibleIds === needs0 && approvedChips + excludedChips === needs0 && approvedChips > 0, `${visibleIds} rows, ${approvedChips} approved, ${excludedChips} excluded`);
+  check('Review: approved chip text is "✓ APPROVED · LOCKED"', /✓ APPROVED · LOCKED/.test(await page.getByTestId('approved-chip').first().innerText()));
+  check('Review: confirmation line is shown (aria-live)', /(approved and locked|excluded)$/.test((await page.getByTestId('review-msg').innerText()).trim()) && (await page.getByTestId('review-msg').getAttribute('aria-live')) === 'polite', (await page.getByTestId('review-msg').innerText()).trim());
+  check('Review: header count reads "ALL REVIEWED ✓" at 0 left', /ALL REVIEWED ✓/.test(await page.getByTestId('left-count').innerText()));
+  await shot('08-review-approved-visible.png');
+  await page.getByRole('button', { name: 'Needs review', exact: true }).click();
+  check('Review: switching the filter to "Needs review" hides the handled rows', (await page.locator('.ag-row[row-id]').count()) === 0);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await page.waitForSelector('.ag-row');
+  check('Review: filter "All" shows the whole catalog', (await page.evaluate(() => new Set([...document.querySelectorAll('.ag-row[row-id]')].map((r) => r.getAttribute('row-id'))).size)) >= 30);
   check('Review: completion banner appears', await page.locator('.banner', { hasText: 'ALL FLAGGED ROWS REVIEWED' }).isVisible());
   await shot('03b-review-all-approved.png');
 

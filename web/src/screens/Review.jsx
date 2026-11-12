@@ -100,7 +100,9 @@ function Panel({ item, onChanged, busy, setBusy, setError }) {
 }
 
 export default function Review({ catalog, counts, reload, onNext }) {
-  const [showAll, setShowAll] = useState(false);
+  const [filter, setFilter] = useState('needs'); // 'needs' | 'all'
+  const [touched, setTouched] = useState({}); // sku -> 'approved' | 'excluded' for rows handled in this visit: they stay visible until the filter is changed
+  const [msg, setMsg] = useState(null);
   const [selected, setSelected] = useState(null);
   const [flip, setFlip] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -115,7 +117,7 @@ export default function Review({ catalog, counts, reload, onNext }) {
     order.current = [...catalog.items].sort((a, b) => (rank[a.status] - rank[b.status]) || a.sku.localeCompare(b.sku)).map((i) => i.sku);
   }
   const bySku = useMemo(() => Object.fromEntries(catalog.items.map((i) => [i.sku, i])), [catalog]);
-  const rowData = useMemo(() => order.current.map((s) => ({ ...bySku[s], _flip: s === flip })).filter((r) => showAll || r.status === 'needs_review' || r.sku === flip), [bySku, flip, showAll]);
+  const rowData = useMemo(() => order.current.map((s) => ({ ...bySku[s], _flip: s === flip })).filter((r) => filter === 'all' || r.status === 'needs_review' || touched[r.sku] || r.sku === flip), [bySku, flip, filter, touched]);
 
   const pending = catalog.items.filter((i) => i.status === 'needs_review');
   useEffect(() => { if (!selected && pending.length) setSelected(pending[0].sku); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,6 +126,10 @@ export default function Review({ catalog, counts, reload, onNext }) {
   const onChanged = async (sku) => {
     setFlip(sku);
     const fresh = await reload();
+    const done = fresh.items.find((i) => i.sku === sku);
+    if (done && done.approved) { setTouched((t) => ({ ...t, [sku]: 'approved' })); setMsg(`${sku} approved and locked`); }
+    else if (done && done.status === 'excluded') { setTouched((t) => ({ ...t, [sku]: 'excluded' })); setMsg(`${sku} excluded`); }
+    else { setTouched((t) => { const n = { ...t }; delete n[sku]; return n; }); setMsg(`${sku} unlocked`); }
     const next = fresh.items.find((i) => i.status === 'needs_review' && i.sku !== sku);
     setSelected(next ? next.sku : sku);
     setTimeout(() => setFlip((f) => (f === sku ? null : f)), 900);
@@ -139,6 +145,7 @@ export default function Review({ catalog, counts, reload, onNext }) {
       <section className="section tight" style={{ paddingTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
           <SectionLabel>Review</SectionLabel>
+          <span className={`mono${counts.needs_review ? ' muted' : ''}`} style={{ fontSize: 12, letterSpacing: '0.06em' }} data-testid="left-count">{counts.needs_review ? `${counts.needs_review} LEFT TO REVIEW` : 'ALL REVIEWED ✓'}</span>
         </div>
         <h2 className="h-l" style={{ marginBottom: 16 }}>Review the flagged rows once</h2>
         <div className="stats">
@@ -152,13 +159,16 @@ export default function Review({ catalog, counts, reload, onNext }) {
         {counts.needs_review === 0 && (
           <div className="banner" style={{ marginBottom: 16 }}>
             <span><b className="mono">ALL FLAGGED ROWS REVIEWED.</b> Every approved row is locked: re-running the AI will not touch it.</span>
-            <Button small onClick={onNext}>Continue to order</Button>
           </div>
         )}
         {error && <div className="banner fail" role="alert" style={{ marginBottom: 16 }}><span>{error}</span></div>}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <button className="btn small secondary" onClick={() => setShowAll(!showAll)}>{showAll ? 'Show needs-review only' : `Show all ${counts.total} rows`}</button>
-          <span className="mono muted" style={{ fontSize: 11 }}>{rowData.length} ROWS SHOWN · NEEDS-REVIEW ROWS FIRST</span>
+        <div className="mono" style={{ fontSize: 12, minHeight: 20, marginBottom: 4 }} role="status" aria-live="polite" data-testid="review-msg">{msg}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div className="seg" role="group" aria-label="Rows to show">
+            <button aria-pressed={filter === 'needs'} onClick={() => { setFilter('needs'); setTouched({}); }}>Needs review</button>
+            <button aria-pressed={filter === 'all'} onClick={() => { setFilter('all'); setTouched({}); }}>All</button>
+          </div>
+          <span className="mono muted" style={{ fontSize: 11 }}>{rowData.length} ROWS SHOWN · NEEDS-REVIEW ROWS FIRST{filter === 'all' ? ` · ALL ${counts.total} ROWS` : ''}</span>
         </div>
         <div className="review-wrap">
           <div className="card" style={{ overflow: 'hidden' }}>
@@ -169,12 +179,12 @@ export default function Review({ catalog, counts, reload, onNext }) {
               rowData={rowData}
               columnDefs={columnDefs}
               getRowId={(p) => p.data.sku}
-              getRowClass={(p) => (p.data._flip ? 'row-flash' : '')}
+              getRowClass={(p) => `${p.data._flip ? 'row-flash' : ''}${p.data.approved || p.data.status === 'excluded' ? ' row-muted' : ''}`}
               rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
               onGridReady={(e) => { gridApi.current = e.api; }}
               onFirstDataRendered={(e) => e.api.getRowNode(selectedRef.current)?.setSelected(true)}
               onRowClicked={(e) => setSelected(e.data.sku)}
-              overlayNoRowsTemplate="<span style='font-family:Geist Mono Variable,monospace;font-size:12px'>NOTHING TO REVIEW — SHOW ALL ROWS TO SEE THE CATALOG</span>"
+              overlayNoRowsTemplate="<span style='font-family:Geist Mono Variable,monospace;font-size:12px'>NOTHING TO REVIEW — CHOOSE ALL TO SEE THE CATALOG</span>"
               suppressCellFocus
               animateRows={false}
             />

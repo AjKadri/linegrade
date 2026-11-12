@@ -40,8 +40,9 @@ function Confidence({ value, data }) {
 function Status({ data }) {
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: '100%' }}>
-      <StatusChip item={data} flip={data._flip} />
-      {data.approved ? <span className="mono muted" style={{ fontSize: 10 }}>LOCKED</span> : null}
+      {data.approved
+        ? <span className={`chip ok approved${data._flip ? ' flip' : ''}`} data-testid="approved-chip">✓ APPROVED · LOCKED</span>
+        : <StatusChip item={data} flip={data._flip} />}
     </div>
   );
 }
@@ -53,5 +54,5 @@ export const columnDefs = [
   { field: 'uom_braintree', headerName: 'UoM', width: 76, cellRenderer: mono },
   { field: 'unit_price', headerName: 'Price', width: 90, cellRenderer: (p) => <span className="cell-mono">${p.value}</span> },
   { field: 'confidence', headerName: 'Confidence', width: 138, cellRenderer: Confidence },
-  { field: 'status', headerName: 'Status', width: 178, cellRenderer: Status },
+  { field: 'status', headerName: 'Status', width: 206, cellRenderer: Status },
 ];
