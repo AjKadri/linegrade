@@ -157,7 +157,7 @@ async function main() {
   check('Readiness: slider range $50,000 to $5,000,000 gives about $475 to $47,500 a year', lo[0] === '$50,000' && lo[1].includes('$475') && hi[0] === '$5,000,000' && hi[1].includes('$47,500'), `${lo.join(' -> ')} | ${hi.join(' -> ')}`);
   check('Readiness: states the all-qualifying-volume assumption and the purchasing/corporate case', /ASSUMES ALL VOLUME IS ON QUALIFYING CARDS/.test(await page.locator('.vol').innerText()) && /PURCHASING \/ CORPORATE CARD CASE/.test(await page.locator('.vol').innerText()));
   const rangeText = (await page.getByTestId('fee-range').innerText()).trim();
-  check('Readiness: the $958 range and the table stay as detail, labelled ESTIMATE', /\$2\.40 – \$11\.49/.test(rangeText) && (await page.locator('.navy tbody tr').count()) === 3 && /DIFFERENCE · ESTIMATE/i.test(await page.locator('.navy thead').innerText()), rangeText);
+  check('Readiness: the $958 range and the table stay as detail, labelled ESTIMATE', /\$2\.40 – \$11\.49/.test(rangeText) && (await page.locator('.estimate-box .checks3 tbody tr').count()) === 3 && /DIFFERENCE · ESTIMATE/i.test(await page.locator('.estimate-box .checks3 thead').innerText()), rangeText);
   const l3 = (await page.locator('.stats .stat').nth(2).innerText()).replace(/\s+/g, ' ');
   check('Readiness: Level 3 orders counts only this session (1 sale made in this run)', /^1 LEVEL 3 ORDERS/i.test(l3), l3);
   const href = await page.locator('.estimate-box a').first().getAttribute('href');
