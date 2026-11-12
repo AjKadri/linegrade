@@ -139,7 +139,8 @@ function createApp(opts = {}) {
   });
 
   // Health check for the host (Render). No session, no rate limit, no secrets.
-  app.get(['/health', '/api/health'], (req, res) => {
+  // /health is Render's healthCheckPath. /api/status is the same answer on a neutral path for the browser: some ad and privacy blockers block anything called "health".
+  app.get(['/health', '/api/health', '/api/status'], (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ status: 'ok', codeList: codeListKind(), paypalRail: paypal.railStatus().enabled ? 'on' : 'off', uptimeSeconds: Math.round((Date.now() - START) / 1000), sandbox: true, synthetic: true, sessions: sessions.count(), commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined });
   });
@@ -180,8 +181,8 @@ function createApp(opts = {}) {
   const ipLimit = rateLimiter({ name: 'network address', max: () => config().ratePerIpPerMin, keyFn: (r) => r.ip });
   const sessionLimit = rateLimiter({ name: 'session', max: () => config().ratePerSessionPerMin, keyFn: (r) => r.session.id });
   const sessionMw = sessions.middleware();
-  app.use('/api', (req, res, next) => (req.path === '/health' ? next() : ipLimit(req, res, next)));
-  app.use('/api', (req, res, next) => (req.path === '/health' ? next() : sessionMw(req, res, next)));
+  app.use('/api', (req, res, next) => (['/health', '/status'].includes(req.path) ? next() : ipLimit(req, res, next)));
+  app.use('/api', (req, res, next) => (['/health', '/status'].includes(req.path) ? next() : sessionMw(req, res, next)));
   app.use('/api', (req, res, next) => (req.session ? sessionLimit(req, res, next) : next()));
 
   const stOf = (req) => store.forSession(req.session);

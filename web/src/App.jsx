@@ -27,9 +27,9 @@ export default function App() {
     return c;
   }, []);
 
-  // Waking up: Render's free tier sleeps after 15 idle minutes. Poll /health until the server answers.
-  // One loop at a time. If the server is fine (a single quick /health says so) the screen never appears, so an
-  // API-level hiccup cannot trap anyone behind it. The screen leaves as soon as /health is ok.
+  // Waking up: Render's free tier sleeps after 15 idle minutes. Poll /api/status until the server answers.
+  // One loop at a time. If the server is fine (a single quick status check says so) the screen never appears, so an
+  // API-level hiccup cannot trap anyone behind it. The screen leaves as soon as the server answers.
   const [wakeInfo, setWakeInfo] = useState({ since: Date.now(), detail: null });
   const gen = useRef(0);
   const running = useRef(false);

@@ -33,24 +33,43 @@ async function call(method, url, body) {
   return data;
 }
 
-// Is the server up? Resolves with /health's JSON, rejects with a short reason a person can read.
-// Uses AbortController + setTimeout (not AbortSignal.timeout, which older Safari and some webviews lack).
-async function health() {
+// Is the server up? Resolves with the status JSON, rejects with a short reason a person can read.
+// The path is /api/status, not /health: some ad and privacy blockers block any URL called "health" (the request then fails
+// at once with a TypeError, ERR_BLOCKED_BY_CLIENT). Uses AbortController + setTimeout (older Safari lacks AbortSignal.timeout).
+async function status() {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
+  const t0 = Date.now();
   try {
-    const r = await fetch('/health', { cache: 'no-store', signal: ctrl.signal });
+    const r = await fetch('/api/status', { cache: 'no-store', signal: ctrl.signal });
     if (!r.ok) throw new Error(`the server answered HTTP ${r.status}`);
     let j; try { j = await r.json(); } catch { throw new Error('the reply was not the app (a loading page?)'); }
     if (!j || j.status !== 'ok') throw new Error('the server did not report ok');
     return j;
   } catch (e) {
-    throw new Error(e.name === 'AbortError' ? 'no answer within 8 seconds' : e.name === 'TypeError' ? 'could not connect to the server (network error)' : (e.message || String(e)));
+    const err = new Error(e.name === 'AbortError' ? 'no answer within 8 seconds' : e.name === 'TypeError' ? 'could not connect to the server (network error)' : (e.message || String(e)));
+    err.blockedSignature = e.name === 'TypeError' && Date.now() - t0 < 1000; // fast network error: what a blocked request looks like
+    throw err;
   } finally { clearTimeout(timer); }
 }
 
+// The wake check must never lock anybody out of a working app. If the status probe fails the way a blocked request does,
+// ask the app's own data endpoint: if that answers, the server is up (the probe was blocked, not the server asleep).
+async function reachable() {
+  try { return await status(); } catch (e) {
+    if (!e.blockedSignature) throw e;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const r = await fetch('/api/state', { cache: 'no-store', signal: ctrl.signal });
+      if (r.ok) return { status: 'ok', via: 'data' };
+    } catch { /* the data request failed too: really down */ } finally { clearTimeout(timer); }
+    throw e;
+  }
+}
+
 export const api = {
-  health,
+  health: reachable,
   state: () => call('GET', '/api/state'),
   catalog: () => call('GET', '/api/catalog'),
   reset: () => call('POST', '/api/catalog/reset'),
