@@ -286,7 +286,7 @@ function unapproveSku(sku, { output = DEFAULT_OUTPUT } = {}) {
   return item;
 }
 
-module.exports = { ProviderUnavailableError, enrichCatalog, planEnrichment, approveSku, excludeSku, unapproveSku, readCatalog, DEFAULT_OUTPUT, DEFAULT_INPUT };
+module.exports = { ProviderUnavailableError, enrichCatalog, planEnrichment, readExisting, approveSku, excludeSku, unapproveSku, readCatalog, DEFAULT_OUTPUT, DEFAULT_INPUT };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);

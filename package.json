@@ -18,7 +18,8 @@
     "build": "npm --prefix web ci --include=dev && npm --prefix web run build",
     "coldstart": "node scripts/coldstart.js",
     "check:failures": "node scripts/failure-paths.js",
-    "check:sessions": "node scripts/sessions-check.js"
+    "check:sessions": "node scripts/sessions-check.js",
+    "check:rerun": "node scripts/rerun-ui-check.js"
   },
   "dependencies": {
     "braintree": "^3.0.0",

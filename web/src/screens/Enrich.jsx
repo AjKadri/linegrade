@@ -39,9 +39,11 @@ export default function Enrich({ state, catalog, reload, onNext }) {
 
   const rerun = () => {
     clearInterval(timer.current);
-    setMode('live'); setPhase('live'); setRows([]); setError(null); setSummary(null); setNotice(null);
+    setPhase('starting'); setError(null); setNotice(null); // the rows on screen stay until the server says a run really starts
     closer.current = streamEnrich({ force }, {
-      plan: (p) => { setTotal(p.total); setSummary({ toClassify: p.toClassify }); },
+      // Nothing to classify: no run, no re-run used up, say so plainly.
+      nothing: (n) => { setNotice({ kind: 'info', message: n.message }); setPhase('done'); },
+      plan: (p) => { setMode('live'); setPhase('live'); setRows([]); setSummary(null); setTotal(p.total); setSummary({ toClassify: p.toClassify }); },
       item: (e) => setRows((r) => [...r, toRow(e.item, e.action)]),
       done: async (d) => { setSummary((s) => ({ ...s, ...d })); setPhase('done'); await reload(); },
       capped: (c) => setNotice({ kind: 'cap', message: c.message }),
@@ -56,7 +58,7 @@ export default function Enrich({ state, catalog, reload, onNext }) {
   };
 
   const counts = rows.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, {});
-  const working = phase === 'replay' || phase === 'live';
+  const working = phase === 'replay' || phase === 'live' || phase === 'starting';
   const pct = total ? Math.round((100 * rows.length) / total) : 0;
   const reused = rows.filter((r) => r.action === 'reuse').length;
   const locked = rows.filter((r) => r.action === 'locked').length;
@@ -85,11 +87,11 @@ export default function Enrich({ state, catalog, reload, onNext }) {
             </div>
           )}
           {summary?.last_run && <div className="mono muted" style={{ fontSize: 11 }}>COST ${summary.last_run.cost_usd?.toFixed(4) ?? '—'} · {summary.last_run.classified} CLASSIFIED</div>}
-          {notice && <div className={`banner ${notice.kind === 'cap' ? 'warn' : 'fail'}`} role="alert" data-testid="enrich-notice"><span>{notice.message}</span></div>}
+          {notice && <div className={`banner ${notice.kind === 'cap' ? 'warn' : notice.kind === 'info' ? '' : 'fail'}`} role="alert" data-testid="enrich-notice"><span>{notice.message}</span></div>}
           {error && <div className="banner fail" role="alert"><span>{error}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto', width: '100%' }}>
             <Button onClick={onNext} disabled={phase !== 'done'}>Continue to review</Button>
-            <Button variant="secondary" icon="" onClick={rerun} disabled={working || (limits && (!limits.liveAi.enabled || limits.rerunsLeft < 1 || limits.dailyBudgetExhausted))}>Re-run AI (keeps locked rows)</Button>
+            <Button variant="secondary" icon="" data-testid="rerun" onClick={rerun} disabled={working || (limits && (!limits.liveAi.enabled || limits.rerunsLeft < 1 || limits.dailyBudgetExhausted))}>{limits?.firstRun ? 'Run AI on this catalog' : 'Re-run AI (keeps locked rows)'}</Button>
             {limits && <div className="mono muted" data-testid="ai-limits" style={{ fontSize: 11, letterSpacing: '0.04em', lineHeight: 1.6 }}>{!limits.liveAi.enabled ? `LIVE AI OFF · REPLAY ONLY. ${limits.liveAi.message}` : limits.dailyBudgetExhausted ? "TODAY'S AI BUDGET IS USED UP · REPLAY ONLY" : limits.rerunsLeft < 1 ? `NO LIVE AI RE-RUNS LEFT THIS SESSION (${limits.rerunsMax}) · REPLAY ONLY` : `LIVE AI RE-RUNS LEFT THIS SESSION: ${limits.rerunsLeft} OF ${limits.rerunsMax}`}</div>}
             <label className="mono muted" style={{ fontSize: 11, display: 'flex', gap: 8, alignItems: 'center', letterSpacing: '0.04em' }}>
               <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> FORCE: RE-CLASSIFY ALL UNLOCKED ROWS

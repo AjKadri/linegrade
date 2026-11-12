@@ -40,7 +40,7 @@ class SessionManager {
     }
     const id = crypto.randomBytes(18).toString('base64url'); // 24 chars
     const t = this.now();
-    const s = { id, dir: path.join(this.dir, id), created: t, lastSeen: t, start: new Date(t).toISOString(), reruns: 0, payments: 0 };
+    const s = { id, dir: path.join(this.dir, id), created: t, lastSeen: t, start: new Date(t).toISOString(), reruns: 0, aiRuns: 0, payments: 0 };
     this.sessions.set(id, s);
     return s;
   }

@@ -15,7 +15,7 @@ const express = require('express');
 const ROOT = path.join(__dirname, '..');
 try { process.loadEnvFile(path.join(ROOT, '.env')); } catch { /* env may come from the shell or the host (Render) */ }
 
-const { enrichCatalog, approveSku, excludeSku, unapproveSku, ProviderUnavailableError, DEFAULT_INPUT } = require('../src/enrich-catalog');
+const { enrichCatalog: realEnrichCatalog, planEnrichment, readExisting, readCatalog, approveSku, excludeSku, unapproveSku, ProviderUnavailableError, DEFAULT_INPUT } = require('../src/enrich-catalog');
 const { enrichSale, loadCatalog, EnrichSaleError } = require('../src/enrich-sale');
 const { level1Payload } = require('../src/validate');
 const { chargeRequest } = require('../src/pay');
@@ -121,6 +121,7 @@ function createApp(opts = {}) {
   const sessions = opts.sessions || new SessionManager({ dir: path.join(ROOT, 'data', 'sessions'), idleMs: cfg0.sessionIdleMs, maxSessions: cfg0.maxSessions });
   const usage = opts.usage || new Usage(path.join(ROOT, 'data', 'usage.json'));
   const runtime = { liveAiOverride: null, enriching: false };
+  const enrichCatalog = opts.enrichCatalog || realEnrichCatalog; // opts.enrichCatalog: tests only
 
   const app = express();
   app.disable('x-powered-by');
@@ -158,6 +159,7 @@ function createApp(opts = {}) {
     return {
       liveAi: liveAiStatus(),
       rerunsLeft: Math.max(0, c.maxRerunsSession - session.reruns), rerunsMax: c.maxRerunsSession,
+      firstRun: session.aiRuns === 0, // nothing in this session's catalog was classified live yet: the first run classifies every unlocked row
       paymentsLeft: Math.max(0, c.maxPaymentsSession - session.payments), paymentsMax: c.maxPaymentsSession,
       dailyBudgetExhausted: u.spend_usd >= c.dailyCapUsd,
       codeList: codeListKind(),
@@ -202,7 +204,7 @@ function createApp(opts = {}) {
     res.json({ source, meta: { synthetic: true, model: meta.model, modelLabel: prettyModel(meta.model), generated_at: meta.generated_at }, counts: store.counts(items), items });
   });
 
-  app.post('/api/catalog/reset', (req, res) => { const st = stOf(req); st.reset(); res.json({ ok: true, source: st.source() }); });
+  app.post('/api/catalog/reset', (req, res) => { const st = stOf(req); st.reset(); req.session.aiRuns = 0; res.json({ ok: true, source: st.source() }); });
 
   // Re-run the AI (incremental: new/changed rows only; locked rows never touched; ?force=1 re-classifies all unlocked rows).
   // Server-sent events. If the provider is unavailable the run is abandoned, nothing is written, and a "fallback"
@@ -212,6 +214,24 @@ function createApp(opts = {}) {
     const blocked = checkRerun(session);
     if (blocked) return next(blocked);
     if (runtime.enriching) return next(new HttpError(409, 'Another live AI run is in progress. Try again in a minute, or use the frozen-catalog replay.', { code: 'BUSY' }));
+    // The first live run in a session classifies every unlocked row even without Force (the replay was not classified here).
+    const effectiveForce = req.query.force === '1' || session.aiRuns === 0;
+    // Nothing to do? Say so. No run starts and no re-run is used up.
+    {
+      const stp = stOf(req);
+      let plan = null;
+      try { plan = planEnrichment(readCatalog(DEFAULT_INPUT), readExisting(stp.activePath()), { force: effectiveForce }); } catch { plan = null; }
+      if (plan) {
+        const acts = Object.values(plan.actions);
+        if (!acts.some((a) => a.action === 'classify')) {
+          res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+          res.flushHeaders();
+          const reused = acts.filter((a) => a.action === 'reuse').length; const locked = acts.filter((a) => a.action === 'locked').length;
+          res.write(`event: nothing\ndata: ${JSON.stringify({ code: 'NOTHING_TO_DO', total: acts.length, fresh: 0, reused, locked, message: `Nothing has changed since the last run (0 new, ${reused} reused, ${locked} locked). Tick Force to re-classify all unlocked rows.` })}\n\n`);
+          return res.end();
+        }
+      }
+    }
     runtime.enriching = true;
     session.reruns += 1; usage.add({ reruns: 1 });
     const st = stOf(req);
@@ -223,13 +243,14 @@ function createApp(opts = {}) {
     res.on('close', () => { clientGone = true; });
     const dailyCap = config().dailyCapUsd;
     enrichCatalog({
-      input: DEFAULT_INPUT, output: st.catalogFile, force: req.query.force === '1', log: () => {},
+      input: DEFAULT_INPUT, output: st.catalogFile, force: effectiveForce, log: () => {},
       onProgress: (ev) => send(ev.type, ev),
       onProviderError: 'abort',
       onCost: (usd) => usage.add({ spend: usd }),
       shouldStop: () => clientGone || usage.snapshot().spend_usd >= dailyCap,
     })
       .then((out) => {
+        if (out.meta.last_run.classified > 0) session.aiRuns += 1;
         send('done', { counts: store.counts(Object.values(out.items)), last_run: out.meta.last_run, model: out.meta.model, modelLabel: prettyModel(out.meta.model) });
         if (out.meta.last_run.stopped_early && usage.snapshot().spend_usd >= dailyCap) {
           send('capped', { code: 'CAP_REACHED', cap: 'daily_spend', message: `Today's AI budget ($${dailyCap.toFixed(2)}) ran out part-way. Rows not reached keep their earlier result. The frozen-catalog replay still works.` });

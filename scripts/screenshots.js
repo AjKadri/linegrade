@@ -318,7 +318,7 @@ async function main() {
   if (health.codeList === 'none') {
     // Hosted case: no licensed UNSPSC list. Replay must be labelled, Re-run must be off with the note.
     await rp.waitForSelector('[data-testid="ai-limits"]');
-    check('No code list: Re-run AI is disabled', await rp.getByRole('button', { name: /^Re-run AI/ }).isDisabled());
+    check('No code list: Re-run AI is disabled', await rp.getByRole('button', { name: /^(Re-run AI|Run AI on this catalog)/ }).isDisabled());
     check('No code list: note says live AI runs locally, demo replays a saved run', /LIVE AI RUNS LOCALLY WITH THE LICENSED UNSPSC LIST; THIS DEMO REPLAYS A SAVED RUN/i.test(await rp.locator('[data-testid="ai-limits"]').innerText()), (await rp.locator('[data-testid="ai-limits"]').innerText()).slice(0, 120));
     check('No code list: replay is labelled REPLAY', /REPLAY/.test(await rp.locator('main').innerText()));
   }
