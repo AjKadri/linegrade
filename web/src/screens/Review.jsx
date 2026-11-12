@@ -181,6 +181,7 @@ export default function Review({ catalog, counts, reload, onNext }) {
               theme={gridTheme}
               rowData={rowData}
               columnDefs={columnDefs}
+              autoSizeStrategy={{ type: 'fitGridWidth' }}
               getRowId={(p) => p.data.sku}
               getRowClass={(p) => `${p.data._flip ? 'row-flash' : ''}${p.data.approved || p.data.status === 'excluded' ? ' row-muted' : ''}`}
               rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}

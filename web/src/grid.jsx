@@ -48,11 +48,10 @@ function Status({ data }) {
 }
 
 export const columnDefs = [
-  { field: 'sku', headerName: 'SKU', width: 104, cellRenderer: mono, pinned: 'left' },
-  { field: 'raw_name', headerName: 'Catalog name', flex: 1.4, minWidth: 220 },
-  { field: 'unspsc', headerName: 'UNSPSC', width: 112, cellRenderer: mono },
-  { field: 'uom_braintree', headerName: 'UoM', width: 76, cellRenderer: mono },
-  { field: 'unit_price', headerName: 'Price', width: 90, cellRenderer: (p) => <span className="cell-mono">${p.value}</span> },
-  { field: 'confidence', headerName: 'Confidence', width: 138, cellRenderer: Confidence },
-  { field: 'status', headerName: 'Status', width: 206, cellRenderer: Status },
+  { field: 'sku', headerName: 'SKU', width: 92, minWidth: 84, cellRenderer: mono, pinned: 'left' },
+  { field: 'raw_name', headerName: 'Catalog name', flex: 1.4, minWidth: 120 },
+  { field: 'unspsc', headerName: 'UNSPSC', width: 112, minWidth: 108, cellRenderer: mono },
+  { field: 'unit_price', headerName: 'Price', width: 84, minWidth: 80, cellRenderer: (p) => <span className="cell-mono">${p.value}</span> },
+  { field: 'confidence', headerName: 'Confidence', width: 124, minWidth: 116, cellRenderer: Confidence },
+  { field: 'status', headerName: 'Status', width: 190, minWidth: 190, cellRenderer: Status },
 ];
