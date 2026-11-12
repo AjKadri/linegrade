@@ -54,7 +54,7 @@ export default function App() {
   useEffect(() => {
     wake({ immediate: true });
     const offline = () => { wake(); };
-    const gone = () => { if (Date.now() - dismissedAt.current > 15_000) setExpired(true); }; // late answers to requests sent before the new cookie was stored must not bring the banner back
+    const gone = (e) => { if (Date.now() - dismissedAt.current > 15_000) setExpired(e?.detail === 'expired' ? 'expired' : 'restarted'); }; // late answers to requests sent before the new cookie was stored must not bring the banner back
     window.addEventListener('lg:offline', offline);
     window.addEventListener('lg:session-expired', gone);
     return () => { gen.current += 1; window.removeEventListener('lg:offline', offline); window.removeEventListener('lg:session-expired', gone); };
@@ -92,7 +92,7 @@ export default function App() {
         </div>
       </header>
       <main className="frame">
-        {expired && <div className="banner warn" role="alert" style={{ margin: 16 }}><span>Your session expired after {state?.session?.idleMinutes ?? 120} minutes of inactivity. Your earlier approvals are gone: you are back on the frozen demo catalog.</span><Button small variant="secondary" icon="" onClick={restartFromFrozen}>Start again</Button></div>}
+        {expired && <div className="banner warn" role="alert" style={{ margin: 16 }}><span>{expired === 'expired' ? `Your session expired after ${state?.session?.idleMinutes ?? 120} minutes of inactivity. Your earlier approvals are gone: you are back on the frozen demo catalog.` : 'The demo server went to sleep while idle and has restarted, so your earlier approvals were reset: you are back on the frozen demo catalog.'}</span><Button small variant="secondary" icon="" onClick={restartFromFrozen}>Start again</Button></div>}
         {error && <div className="banner fail" role="alert" style={{ margin: 16 }}><span>{error}</span><span style={{ display: 'flex', gap: 8 }}><Button small variant="secondary" icon="" onClick={() => { setError(null); api.state().then(setState).catch(() => setError('Still cannot load the app data. Check your connection and try again.')); }}>Retry</Button><Button small variant="secondary" icon="" onClick={() => setError(null)}>Dismiss</Button></span></div>}
         {screen === 'landing' && <Landing state={state} onLoad={loadDemo} loading={loading} />}
         {screen === 'enrich' && catalog && <Enrich state={state} catalog={catalog} reload={reload} onNext={() => go('review')} />}

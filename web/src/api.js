@@ -8,7 +8,8 @@ export class ApiError extends Error {
 const emit = (name) => window.dispatchEvent(new CustomEvent(name));
 
 function noteSession(res) {
-  if (res.headers.get('x-lg-session') === 'expired') emit('lg:session-expired');
+  const end = res.headers.get('x-lg-session');
+  if (end === 'expired' || end === 'restarted') window.dispatchEvent(new CustomEvent('lg:session-expired', { detail: end }));
 }
 
 async function call(method, url, body) {
