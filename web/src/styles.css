@@ -385,3 +385,6 @@ table.t.fixed td { overflow-wrap: anywhere; }
 @keyframes wakeslide { 0% { left: -40%; } 100% { left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .wake-bar i { animation: none !important; left: 0; width: 100%; opacity: 0.5; } }
 .field-error { color: var(--fail); font: 500 12px var(--mono); letter-spacing: 0.02em; margin-top: -2px; }
+
+/* next-step button: emphasised once the step is complete */
+.btn[data-emphasis='true'] { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent); }

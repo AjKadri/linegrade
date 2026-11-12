@@ -54,6 +54,7 @@ function Payoff({ result, paying, onAgain, onNext }) {
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Button small variant="secondary" icon="" onClick={() => setShowChecks(!showChecks)} aria-expanded={showChecks}>{showChecks ? 'Hide read-back' : 'Show read-back'}</Button>
             <Button small variant="secondary" icon="" disabled={paying} onClick={onAgain}>Submit same order again</Button>
+            <Button small onClick={onNext}>See readiness</Button>
           </div>
         </div>
         {showChecks && <div style={{ marginTop: 14 }}><ChecksTable checks={result.checks} rail={rail} /></div>}
@@ -357,9 +358,12 @@ export default function Order({ catalog, state, onNext, onReview }) {
                   <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>The test card and all keys stay on the server. No real money moves.{paymentsLeft !== null && <span className="mono" data-testid="payments-left"> · SANDBOX PAYMENTS LEFT THIS SESSION: {paymentsLeft} OF {state?.limits?.paymentsMax}</span>}</div>
                   {rail === 'paypal' && <div className="muted" style={{ fontSize: 12, marginTop: 6 }} data-testid="pp-commercial-note">PayPal’s sandbox returns no card BIN data, so this rail does not claim the card was detected as commercial. Units are sent as PayPal words (BOX, PACK, CASE); a unit PayPal does not accept is left out.</div>}
                 </div>
-                {paid
-                  ? <Button icon="✓" disabled>Paid</Button>
-                  : <Button disabled={!ok || paying} onClick={() => pay(false)}>{paying ? 'Charging…' : level === 1 ? `Pay ${ok ? money(preview.totals.total) : ''} · Level 1 only` : `Pay ${ok ? money(preview.totals.total) : ''} with LineGrade data`}</Button>}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {!sales[1] && !sales[3] && <Button variant="secondary" onClick={onNext} disabled={paying}>Skip to readiness</Button>}
+                  {paid
+                    ? <Button icon="✓" disabled>Paid</Button>
+                    : <Button disabled={!ok || paying} onClick={() => pay(false)}>{paying ? 'Charging…' : level === 1 ? `Pay ${ok ? money(preview.totals.total) : ''} · Level 1 only` : `Pay ${ok ? money(preview.totals.total) : ''} with LineGrade data`}</Button>}
+                </div>
               </div>
               {result && <Payoff result={result} paying={paying} onAgain={() => pay(true)} onNext={onNext} />}
             </div>

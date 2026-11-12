@@ -97,7 +97,7 @@ export default function App() {
         {screen === 'enrich' && catalog && <Enrich state={state} catalog={catalog} reload={reload} onNext={() => go('review')} />}
         {screen === 'review' && catalog && <Review catalog={catalog} counts={counts} reload={reload} onNext={() => go('order')} />}
         {screen === 'order' && catalog && <Order catalog={catalog} state={state} onNext={() => go('readiness')} onReview={() => go('review')} />}
-        {screen === 'readiness' && catalog && <Readiness state={state} onRestart={restart} />}
+        {screen === 'readiness' && catalog && <Readiness state={state} onRestart={restart} onBack={() => go('order')} />}
         {screen !== 'landing' && !catalog && !error && <div className="section mono muted" style={{ fontSize: 12 }}>LOADING CATALOG…</div>}
       </main>
     </div>

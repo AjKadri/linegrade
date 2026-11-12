@@ -13,7 +13,7 @@ const money0 = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
 
 const mark = (status) => (status === 'pass' ? <span className="pass">PASS</span> : status === 'fail' ? <span className="failt">FAIL</span> : <span className="muted">—</span>);
 
-export default function Readiness({ state, onRestart }) {
+export default function Readiness({ state, onRestart, onBack }) {
   const [data, setData] = useState(null);
   const [t, setT] = useState(50);
   useEffect(() => { api.readiness().then(setData).catch(() => setData(null)); }, []);
@@ -166,6 +166,7 @@ export default function Readiness({ state, onRestart }) {
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
           <Button variant="secondary" icon="" onClick={onRestart}>Start over</Button>
+          <Button variant="secondary" icon="" onClick={onBack}>Back to order</Button>
         </div>
       </section>
       <Footer />

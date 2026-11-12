@@ -145,7 +145,10 @@ export default function Review({ catalog, counts, reload, onNext }) {
       <section className="section tight" style={{ paddingTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
           <SectionLabel>Review</SectionLabel>
-          <span className={`mono${counts.needs_review ? ' muted' : ''}`} style={{ fontSize: 12, letterSpacing: '0.06em' }} data-testid="left-count">{counts.needs_review ? `${counts.needs_review} LEFT TO REVIEW` : 'ALL REVIEWED ✓'}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span className={`mono${counts.needs_review ? ' muted' : ''}`} style={{ fontSize: 12, letterSpacing: '0.06em' }} data-testid="left-count">{counts.needs_review ? `${counts.needs_review} LEFT TO REVIEW` : 'ALL REVIEWED ✓'}</span>
+            <Button small onClick={onNext} data-emphasis={counts.needs_review === 0} data-testid="continue-top">Continue to order</Button>
+          </span>
         </div>
         <h2 className="h-l" style={{ marginBottom: 16 }}>Review the flagged rows once</h2>
         <div className="stats">
@@ -191,6 +194,9 @@ export default function Review({ catalog, counts, reload, onNext }) {
             </div>
           </div>
           <Panel item={selItem} onChanged={onChanged} busy={busy} setBusy={setBusy} setError={setError} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <Button onClick={onNext} data-emphasis={counts.needs_review === 0} data-testid="continue-bottom">Continue to order</Button>
         </div>
       </section>
     </>

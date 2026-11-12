@@ -76,6 +76,7 @@ async function main() {
   check('Review: first flagged row is selected in the grid', (await page.locator('.ag-row.ag-row-selected').count()) > 0);
   await shot('03-review.png');
 
+  check('Review: "Continue to order" is visible at the top right and at the bottom of the grid before anything is reviewed', await page.getByTestId('continue-top').isVisible() && await page.getByTestId('continue-bottom').isVisible() && (await page.getByTestId('continue-top').getAttribute('data-emphasis')) === 'false');
   let steps = 0; let needs = needs0;
   while (needs > 0 && steps++ < 12) {
     const panel = page.locator('.panel');
@@ -92,6 +93,7 @@ async function main() {
   check('Review: handled rows stay in the grid (approved with a tick and "APPROVED · LOCKED", excluded as EXCLUDED)', visibleIds === needs0 && approvedChips + excludedChips === needs0 && approvedChips > 0, `${visibleIds} rows, ${approvedChips} approved, ${excludedChips} excluded`);
   check('Review: approved chip text is "✓ APPROVED · LOCKED"', /✓ APPROVED · LOCKED/.test(await page.getByTestId('approved-chip').first().innerText()));
   check('Review: confirmation line is shown (aria-live)', /(approved and locked|excluded)$/.test((await page.getByTestId('review-msg').innerText()).trim()) && (await page.getByTestId('review-msg').getAttribute('aria-live')) === 'polite', (await page.getByTestId('review-msg').innerText()).trim());
+  check('Review: both Continue buttons are emphasised once everything is reviewed', (await page.getByTestId('continue-top').getAttribute('data-emphasis')) === 'true' && (await page.getByTestId('continue-bottom').getAttribute('data-emphasis')) === 'true');
   check('Review: header count reads "ALL REVIEWED ✓" at 0 left', /ALL REVIEWED ✓/.test(await page.getByTestId('left-count').innerText()));
   await shot('08-review-approved-visible.png');
   await page.getByRole('button', { name: 'Needs review', exact: true }).click();
@@ -102,11 +104,12 @@ async function main() {
   check('Review: completion banner appears', await page.locator('.banner', { hasText: 'ALL FLAGGED ROWS REVIEWED' }).isVisible());
   await shot('03b-review-all-approved.png');
 
-  await page.getByRole('button', { name: /continue to order/i }).click();
+  await page.getByTestId('continue-top').click();
   await page.waitForSelector('.order-grid');
   await page.waitForSelector('.seg');
   check('Order: one SYNTHETIC chip in the top bar only (no header duplicates)', (await page.locator('.chip.synthetic').count()) === 1);
   check('Order: toggle defaults to WITHOUT LineGrade', (await page.getByRole('button', { name: 'Without LineGrade', exact: true }).getAttribute('aria-pressed')) === 'true');
+  check('Order: a secondary "Skip to readiness" is offered before any payment', await page.getByRole('button', { name: 'Skip to readiness', exact: true }).isVisible());
   const resetBtn = page.getByRole('button', { name: 'Reset to $958 demo order', exact: true });
   check('Order: the demo order is already loaded, so no demo button is shown', (await resetBtn.count()) === 0 && (await page.getByRole('button', { name: /load \$958/i }).count()) === 0);
   await page.getByLabel('Line 1 quantity').fill('26');
@@ -209,6 +212,10 @@ async function main() {
   check('Readiness: cites the Visa schedule with its URL and dates', /usa\.visa\.com/.test(href) && /EFFECTIVE 2026-10-24/.test(await page.locator('.estimate-box').innerText()) && /ACCESSED 2026-11-07/.test(await page.locator('.estimate-box').innerText()));
   check('Readiness: SYNTHETIC DATA chip persists; footer wordmark lowercase with tick', await page.locator('.topbar .chip.synthetic').isVisible() && (await page.locator('.wordmark span').innerText()) === 'linegrade' && (await page.locator('.wordmark .tick').count()) === 1);
   await shot('05-readiness.png');
+  check('Readiness: "Start over" stays and a secondary "Back to order" is offered', await page.getByRole('button', { name: 'Start over', exact: true }).isVisible() && await page.getByRole('button', { name: 'Back to order', exact: true }).isVisible());
+  await page.getByRole('button', { name: 'Back to order', exact: true }).click();
+  await page.waitForSelector('.order-grid');
+  check('Readiness: "Back to order" returns to the Order screen', true);
   await ctx.close();
 
   // ---------- returning browsers: an old/expired session cookie, and a browser without AbortSignal.timeout ----------
