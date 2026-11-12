@@ -60,7 +60,7 @@ export default function Readiness({ state, onRestart, onBack }) {
       <section className="section tight">
         <div className="stats draw">
           <div className="stat" style={{ '--d': '0ms' }}><div className="n">{data ? `${data.catalog.after.rowsReady}/${data.catalog.rows}` : '—'}</div><div className="k">Catalog rows ready</div></div>
-          <div className="stat" style={{ '--d': '150ms' }}><div className="n">{c?.approved ?? '—'}</div><div className="k">Reviewed &amp; locked</div></div>
+          <div className="stat" style={{ '--d': '150ms' }}><div className="n">{c ? (c.approved || 0) + (c.excluded || 0) : '—'}</div><div className="k">Reviewed &amp; locked</div></div>
           <div className="stat" style={{ '--d': '300ms' }}><div className="n">{data?.level3Orders ?? '—'}</div><div className="k">Level 3 orders (sandbox)</div></div>
           <div className="stat" style={{ '--d': '450ms' }}><div className="n">{c?.needs_review ?? '—'}</div><div className="k">Still need review</div></div>
         </div>

@@ -16,7 +16,8 @@ const Tick = () => (
 const RAIL_NAME = { braintree: 'Braintree', paypal: 'PayPal' };
 const PP_NOT_ECHOED = 'Accepted by PayPal (Level 3 sent; PayPal does not return it on read-back)';
 
-function ChecksTable({ checks, rail = 'braintree' }) {
+// neutral: a Level 1 read-back. "Match" = nothing was sent and nothing came back (or the amount matches); it is not a PASS.
+function ChecksTable({ checks, rail = 'braintree', neutral = false }) {
   return (
     <div className="tscroll">
       <table className="t fixed" aria-label="All read-back checks">
@@ -24,7 +25,7 @@ function ChecksTable({ checks, rail = 'braintree' }) {
         <thead><tr><th>Check</th><th>Sent</th><th>{RAIL_NAME[rail]} returned</th><th className="r">Result</th></tr></thead>
         <tbody>
           {checks.map((c) => (
-            <tr key={c.check}><td>{c.check}</td><td className="mono">{c.expected}</td><td className="mono">{String(c.actual)}</td><td className={`r ${c.pass ? 'pass' : 'failt'}`}>{c.pass ? 'PASS' : 'FAIL'}</td></tr>
+            <tr key={c.check}><td>{c.check}</td><td className="mono">{c.expected}</td><td className="mono">{String(c.actual)}</td><td className={`r ${c.pass ? (neutral ? 'muted mono' : 'pass') : 'failt'}`} data-testid={neutral && c.pass ? 'match' : undefined}>{c.pass ? (neutral ? 'MATCH' : 'PASS') : 'FAIL'}</td></tr>
           ))}
         </tbody>
       </table>
@@ -57,7 +58,7 @@ function Payoff({ result, paying, onAgain, onNext }) {
             <Button small onClick={onNext}>See readiness</Button>
           </div>
         </div>
-        {showChecks && <div style={{ marginTop: 14 }}><ChecksTable checks={result.checks} rail={rail} /></div>}
+        {showChecks && <div style={{ marginTop: 14 }}><ChecksTable checks={result.checks} rail={rail} neutral /></div>}
       </div>
     );
   }

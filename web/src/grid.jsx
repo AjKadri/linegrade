@@ -40,7 +40,9 @@ function Confidence({ value, data }) {
 function Status({ data }) {
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: '100%' }}>
-      {data.approved
+      {data.status === 'excluded'
+        ? <StatusChip item={data} flip={data._flip} />
+        : data.approved
         ? <span className={`chip ok approved${data._flip ? ' flip' : ''}`} data-testid="approved-chip">✓ APPROVED · LOCKED</span>
         : <StatusChip item={data} flip={data._flip} />}
     </div>

@@ -37,7 +37,7 @@ function sessionOrders(ledgerObj, sinceIso) {
 
 function counts(items) {
   const c = { total: items.length, ok: 0, needs_review: 0, excluded: 0, approved: 0 };
-  for (const it of items) { c[it.status] = (c[it.status] || 0) + 1; if (it.approved) c.approved++; }
+  for (const it of items) { c[it.status] = (c[it.status] || 0) + 1; if (it.approved && it.status !== 'excluded') c.approved++; } // excluded rows are locked too but counted under excluded
   const denominator = c.total - c.excluded;
   c.score = denominator ? Math.round((100 * c.ok) / denominator) : 0; // share of goods rows that are Level 3 ready
   return c;

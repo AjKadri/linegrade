@@ -46,7 +46,7 @@ function Panel({ item, onChanged, busy, setBusy, setError }) {
           <>
             <dl className="kv">
               <dt>Official title</dt><dd>{item.unspsc ? <><span className="mono">{item.unspsc}</span><br />{item.unspsc_title}</> : <span className="muted">No code chosen</span>}</dd>
-              <dt>Unit</dt><dd className="mono">{item.uom_braintree ? `${item.uom_braintree} / ${item.uom_paypal}` : '—'}</dd>
+              <dt>Unit</dt><dd className="mono">{item.status !== 'excluded' && item.uom_braintree ? `${item.uom_braintree} / ${item.uom_paypal}` : '—'}</dd>
               <dt>Description</dt><dd>{item.description || <span className="muted">—</span>}</dd>
               <dt>Confidence</dt><dd className="mono">{Number(item.confidence).toFixed(2)}</dd>
               <dt>Runner-up</dt><dd>{item.runner_up ? <><span className="mono">{item.runner_up.unspsc}</span> · {Number(item.runner_up.confidence).toFixed(2)}<br />{item.runner_up.unspsc_title}</> : <span className="muted">none</span>}</dd>
@@ -127,8 +127,8 @@ export default function Review({ catalog, counts, reload, onNext }) {
     setFlip(sku);
     const fresh = await reload();
     const done = fresh.items.find((i) => i.sku === sku);
-    if (done && done.approved) { setTouched((t) => ({ ...t, [sku]: 'approved' })); setMsg(`${sku} approved and locked`); }
-    else if (done && done.status === 'excluded') { setTouched((t) => ({ ...t, [sku]: 'excluded' })); setMsg(`${sku} excluded`); }
+    if (done && done.status === 'excluded') { setTouched((t) => ({ ...t, [sku]: 'excluded' })); setMsg(`${sku} excluded`); }
+    else if (done && done.approved) { setTouched((t) => ({ ...t, [sku]: 'approved' })); setMsg(`${sku} approved and locked`); }
     else { setTouched((t) => { const n = { ...t }; delete n[sku]; return n; }); setMsg(`${sku} unlocked`); }
     const next = fresh.items.find((i) => i.status === 'needs_review' && i.sku !== sku);
     setSelected(next ? next.sku : sku);
@@ -154,14 +154,14 @@ export default function Review({ catalog, counts, reload, onNext }) {
         <div className="stats">
           <div className="stat"><div className="n">{counts.needs_review}</div><div className="k">Needs review</div></div>
           <div className="stat"><div className="n">{counts.ok}</div><div className="k">OK</div></div>
-          <div className="stat"><div className="n">{counts.approved}</div><div className="k">Approved &amp; locked</div></div>
+          <div className="stat"><div className="n">{counts.approved}</div><div className="k">Approved</div></div>
           <div className="stat"><div className="n">{counts.excluded}</div><div className="k">Excluded</div></div>
         </div>
       </section>
       <section className="section" style={{ background: 'transparent' }}>
         {counts.needs_review === 0 && (
           <div className="banner" style={{ marginBottom: 16 }}>
-            <span><b className="mono">ALL FLAGGED ROWS REVIEWED.</b> Every approved row is locked: re-running the AI will not touch it.</span>
+            <span><b className="mono">ALL FLAGGED ROWS REVIEWED.</b> Approved and excluded rows are locked: re-running the AI will not touch them.</span>
           </div>
         )}
         {error && <div className="banner fail" role="alert" style={{ marginBottom: 16 }}><span>{error}</span></div>}

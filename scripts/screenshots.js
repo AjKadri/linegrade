@@ -90,7 +90,16 @@ async function main() {
   const visibleIds = await page.evaluate(() => new Set([...document.querySelectorAll('.ag-row[row-id]')].map((r) => r.getAttribute('row-id'))).size);
   const approvedChips = await page.getByTestId('approved-chip').count();
   const excludedChips = await page.locator('.ag-row .chip.excluded').count();
-  check('Review: handled rows stay in the grid (approved with a tick and "APPROVED · LOCKED", excluded as EXCLUDED)', visibleIds === needs0 && approvedChips + excludedChips === needs0 && approvedChips > 0, `${visibleIds} rows, ${approvedChips} approved, ${excludedChips} excluded`);
+  check('Review: handled rows stay in the grid (approved with a tick and "APPROVED · LOCKED", excluded as EXCLUDED)', visibleIds === needs0 && approvedChips + excludedChips === needs0 && approvedChips > 0 && excludedChips > 0, `${visibleIds} rows, ${approvedChips} approved, ${excludedChips} excluded`);
+  const exclRows = await page.locator('.ag-row .chip.excluded').evaluateAll((els) => els.map((e) => ({ text: e.textContent.trim(), tick: /✓|APPROVED|LOCKED/.test(e.closest('.ag-row').textContent) })));
+  check('Review: excluded rows (NLS-028/038/039/040) read "EXCLUDED", with no tick and no "APPROVED · LOCKED"', exclRows.length === 4 && exclRows.every((r) => r.text === 'EXCLUDED' && !r.tick), JSON.stringify(exclRows.map((r) => r.text)));
+  const statVals = await page.locator('.stats .stat').evaluateAll((els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  check('Review: header counts split into Approved (1) and Excluded (4)', statVals.some((t) => /^1 Approved$/i.test(t)) && statVals.some((t) => /^4 Excluded$/i.test(t)) && !statVals.some((t) => /Approved & locked/i.test(t)), statVals.join(' | '));
+  check('Review: banner says approved and excluded rows are locked', /Approved and excluded rows are locked/.test(await page.locator('.banner', { hasText: 'ALL FLAGGED ROWS REVIEWED' }).innerText()));
+  await page.locator('.ag-row[row-id="NLS-040"]').click();
+  await page.waitForFunction(() => /NLS-040/.test(document.querySelector('.panel')?.textContent || ''));
+  const unitText = (await page.locator('.panel dt', { hasText: 'Unit' }).first().locator('xpath=following-sibling::dd[1]').innerText()).trim();
+  check('Review: the side panel for an excluded row shows no unit ("—")', unitText === '—', unitText);
   check('Review: approved chip text is "✓ APPROVED · LOCKED"', /✓ APPROVED · LOCKED/.test(await page.getByTestId('approved-chip').first().innerText()));
   check('Review: confirmation line is shown (aria-live)', /(approved and locked|excluded)$/.test((await page.getByTestId('review-msg').innerText()).trim()) && (await page.getByTestId('review-msg').getAttribute('aria-live')) === 'polite', (await page.getByTestId('review-msg').innerText()).trim());
   check('Review: both Continue buttons are emphasised once everything is reviewed', (await page.getByTestId('continue-top').getAttribute('data-emphasis')) === 'true' && (await page.getByTestId('continue-bottom').getAttribute('data-emphasis')) === 'true');
@@ -176,6 +185,8 @@ async function main() {
   check('Level 1 (Braintree): "SENT · LEVEL 1 ONLY" with a transaction id, no PASS stamp', /^[a-z0-9]{6,}$/.test(l1Txn) && !/PASS/.test(await page.locator('.payoff').innerText()), l1Txn);
   check('Level 1 (Braintree): says it would fall to the standard rate (estimate), no observed difference claimed', /would fall to the standard rate \(estimate\)/.test(await page.getByTestId('l1-note').innerText()) && !/saved|saving|observed/i.test(await page.locator('.payoff').innerText()));
   await page.getByRole('button', { name: 'Show read-back' }).click();
+  const matchCells = await page.locator('table[aria-label="All read-back checks"] td.r').allInnerTexts();
+  check('Level 1 read-back: result column says a neutral MATCH (muted, not green PASS)', matchCells.length >= 5 && matchCells.every((t) => t.trim() === 'MATCH') && (await page.locator('table[aria-label="All read-back checks"] td.pass').count()) === 0, matchCells.join(','));
   const l1Rows = await page.locator('table[aria-label="All read-back checks"] tbody tr').allInnerTexts();
   check('Level 1 (Braintree): read-back shows no PO, no tax, no line items returned', l1Rows.some((r) => /PO number.*not sent.*none returned/s.test(r)) && l1Rows.some((r) => /Tax amount.*not sent.*none returned/s.test(r)) && l1Rows.some((r) => /Line items returned\s+0\s+0/s.test(r)), `${l1Rows.length} rows`);
   check('Level 1 (Braintree): the sale used a payment (3 of 5 left)', /PAYMENTS LEFT THIS SESSION: 3 OF 5/.test(await page.getByTestId('payments-left').innerText()));
