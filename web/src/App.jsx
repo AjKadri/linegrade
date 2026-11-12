@@ -8,7 +8,8 @@ import Order from './screens/Order.jsx';
 import Readiness from './screens/Readiness.jsx';
 
 // DESIGN.md: dark for landing / enrichment / readiness, light for review and order.
-const THEME = { landing: 'dark', enrich: 'dark', review: 'light', order: 'light', readiness: 'dark' };
+// DARK: landing (and the waking/preloader overlays). LIGHT: every app screen. See DESIGN.md.
+const THEME = { landing: 'dark', enrich: 'light', review: 'light', order: 'light', readiness: 'light' };
 const NAV = [['enrich', 'Catalog'], ['review', 'Review'], ['order', 'Order + pay'], ['readiness', 'Readiness']];
 
 export default function App() {

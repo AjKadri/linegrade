@@ -33,6 +33,7 @@ export default function Readiness({ state, onRestart }) {
         {data && !data.demoOrder.ok && (
           <div className="banner warn" role="alert" style={{ marginBottom: 20 }}><span>The $958 demo order cannot be built right now: {data.demoOrder.refusal?.message}. Showing catalog readiness only.</span></div>
         )}
+        <div className="navy score-panel">
         <div className="ba">
           <div>
             <div className="mono muted" style={{ fontSize: 11, letterSpacing: '0.08em', marginBottom: 8 }}>BEFORE · LEVEL 1 ONLY</div>
@@ -52,6 +53,7 @@ export default function Readiness({ state, onRestart }) {
               </p>
             </div>
           </div>
+        </div>
         </div>
       </section>
       <LineItemBand variant={2} />
@@ -129,16 +131,16 @@ export default function Readiness({ state, onRestart }) {
                     The range reflects that the sandbox card is only flagged &quot;commercial&quot;, so its Visa product is unknown.
                   </p>
 
-                  <div className="navy" style={{ marginTop: 14, overflowX: 'auto' }}>
-                    <table className="checks3" style={{ color: '#ede8e8', minWidth: 640 }}>
-                      <thead><tr><th style={{ color: '#a9acd8' }}>Card and fallback</th><th style={{ color: '#a9acd8' }}>Standard</th><th style={{ color: '#a9acd8' }}>Product 3 (Level 3)</th><th style={{ color: '#a9acd8', textAlign: 'right' }}>Difference · ESTIMATE</th></tr></thead>
+                  <div style={{ marginTop: 14, overflowX: 'auto', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--radius-card)' }}>
+                    <table className="checks3" style={{ minWidth: 640 }}>
+                      <thead><tr><th>Card and fallback</th><th>Standard</th><th>Product 3 (Level 3)</th><th style={{ textAlign: 'right' }}>Difference · ESTIMATE</th></tr></thead>
                       <tbody>
                         {fee.scenarios.map((sc) => (
                           <tr key={sc.id}>
-                            <td style={{ borderColor: '#23265a' }}>{sc.label}</td>
-                            <td className="mono" style={{ borderColor: '#23265a' }}>{sc.standard.rate} = ${sc.standard.fee}</td>
-                            <td className="mono" style={{ borderColor: '#23265a' }}>{sc.product3.rate} = ${sc.product3.fee}</td>
-                            <td className="mono" style={{ borderColor: '#23265a', textAlign: 'right' }}>${sc.difference}</td>
+                            <td>{sc.label}</td>
+                            <td className="mono">{sc.standard.rate} = ${sc.standard.fee}</td>
+                            <td className="mono">{sc.product3.rate} = ${sc.product3.fee}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>${sc.difference}</td>
                           </tr>
                         ))}
                       </tbody>

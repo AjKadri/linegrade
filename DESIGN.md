@@ -6,8 +6,8 @@ Rule: copy the *systems* (grid, type, spacing, motion), never logos, illustratio
 
 ## Concept
 "Invoice-grade" = precise, engineered, auditable. Light technical workspace where the work happens; dark, cinematic moments where the value is revealed.
-- DARK (Matveyan-led): landing/hero, AI enrichment progress, readiness-score reveal.
-- LIGHT (Evolt-led): review grid, order + payment, Visa data read-back, settings.
+- DARK: landing and waking screen only (Matveyan-led: hero, preloader, waking-up).
+- LIGHT: all app screens (Evolt-led): Enrich, Review, Order + pay, Readiness. One dark navy panel is allowed on a light page, for the readiness score reveal. Film grain is for dark surfaces only. (Changed 12 Nov: Enrich and Readiness were dark; the whole app now stays light after the landing page.)
 - AKUA: one indigo accent + an iridescent orb used ONLY as the "AI is working" visual; dark navy metric panels.
 
 ## Tokens
@@ -34,7 +34,7 @@ Radius: 2px on controls (sharp); cards 4px. No pill buttons.
 - Primary button: black (light) / off-white (dark), sharp 2px radius, NO notch. Mono uppercase label followed by a small arrow (→); the tick appears only on completion buttons (Approve, Pay succeeded). (Notched corners were evolt.dev's signature.)
 - Secondary: 1px outline. Dark-mode buttons get Matveyan dotted corner brackets.
 - Status chips: mono uppercase, 1px border in status colour, tinted bg: OK / NEEDS REVIEW / FAILED / ESTIMATE / SYNTHETIC.
-- HUD corners (Matveyan) on dark screens: tiny mono text in screen corners, e.g. "SANDBOX · BRAINTREE", "MODEL HAIKU 5.5", "CATALOG 40 SKUs".
+- HUD corners (Matveyan) on the landing page and app screens: tiny mono text in screen corners, e.g. "SANDBOX · BRAINTREE", "MODEL HAIKU 5.5", "CATALOG 40 SKUs".
 - Labels that must ALWAYS be visible: "SYNTHETIC DATA" (persistent top-bar chip), "ESTIMATE" on any fee/saving figure, "SANDBOX" near any payment.
 
 ## AG Grid (Theming API, themeQuartz.withParams)
@@ -49,18 +49,18 @@ Cells: code/SKU/UoM/amount columns in Geist Mono; confidence as a thin bar + num
 - Preloader (dark): logo mark + thin progress line (Matveyan), <1.2s.
 - Enrichment: Akua-style iridescent orb pulses while rows stream into a ticking counter (36 / 40 classified).
 - Row approve: chip flips NEEDS REVIEW -> OK, 150ms, row border flashes accent.
-- Score reveal (dark): number counts up, stat cells draw their borders in.
+- Score reveal (in the navy panel): number counts up, stat cells draw their borders in.
 - Payment: line items "print" into the Visa data panel one by one, then a green PASS stamp.
 - No scroll-jacking. Respect prefers-reduced-motion.
 
 ## Screens
 1. Landing (dark): HUD corners, headline "INVOICE-GRADE CARD DATA FOR B2B SELLERS", sub-line about Visa CEDP, CTA "LOAD DEMO CATALOG". Optional isometric diagram (original, our own): CATALOG -> AI -> VISA LEVEL 3 -> BRAINTREE / PAYPAL.
-2. Enrich (dark): orb + live counter + streaming list of SKUs with codes appearing.
+2. Enrich (light): orb + live counter + streaming list of SKUs with codes appearing.
 3. Review (light): AG Grid opening on NEEDS REVIEW rows; side panel shows official UNSPSC title, runner-up code, reason, confidence; Approve / Edit locks row.
 4. Order + pay (light): order builder (SKUs+qty), "AS VISA SEES IT" panel showing Level 3 line items exactly as sent, pay with Braintree sandbox, read-back + PASS checks, transaction id.
-5. Readiness (dark): score, stat cells (rows OK, reviewed, Level 3 orders), "ESTIMATED fee: standard vs CEDP Product 3" with source + date, dashed estimate styling.
+5. Readiness (light, with one dark navy panel for the score reveal): score, stat cells (rows OK, reviewed, Level 3 orders), "ESTIMATED fee: standard vs CEDP Product 3" with source + date, dashed estimate styling.
 
-Footer (dark): giant LINEGRADE wordmark (Matveyan), mono links, "Synthetic data · Sandbox · Estimates" line.
+Footer (follows the screen theme: dark on the landing page, light on app screens): giant LINEGRADE wordmark (Matveyan), mono links, "Synthetic data · Sandbox · Estimates" line.
 
 ## Logo (option A, "checked line items") - chosen 7 Nov
 Mark: three horizontal bars, decreasing length (invoice lines), with an accent tick finishing the shortest line.

@@ -31,9 +31,10 @@
 :root {
   --accent: #4b3fe0;
   --accent-soft: #e6e3ff;
-  --ok: #1e8a5a;
-  --review: #c98a00;
-  --fail: #c2382f;
+  /* status colours (light): dark enough that 10.5px chip text meets WCAG AA 4.5:1; dark theme overrides below */
+  --ok: #0c6b43;
+  --review: #855300;
+  --fail: #b3261e;
   --estimate: #4b3fe0;
   --radius: 2px;
   --radius-card: 4px;
@@ -280,6 +281,10 @@ table.t td.r, table.t th.r { text-align: right; }
 /* ---------- readiness ---------- */
 .score { font: 500 200px/0.9 var(--mono); letter-spacing: -0.06em; }
 .navy { background: var(--navy); border: 1px solid #23265a; border-radius: var(--radius-card); color: #ede8e8; }
+/* the one dark navy panel on a light page: the readiness score reveal */
+.score-panel { padding: 28px 32px 32px; }
+.navy .muted { color: #a9acd8; }
+.navy .score-before { color: #a9acd8; text-decoration-color: #6f74b8; }
 .wordmark { display: flex; align-items: flex-end; gap: 0.05em; font: 500 clamp(64px, 15vw, 190px)/0.9 var(--sans); letter-spacing: -0.02em; text-transform: none; color: var(--text); padding: 40px 0 0; white-space: nowrap; overflow: hidden; }
 .wordmark .wm-mark { height: 0.82em; width: 0.82em; margin-bottom: 0.04em; flex: none; }
 .footer { padding: 24px 32px 28px; }
