@@ -189,7 +189,8 @@ export default function Order({ catalog, state, onNext, onReview }) {
   const [preview, setPreview] = useState(null);
   const [perr, setPerr] = useState(null);
   const [orderId, setOrderId] = useState(null);
-  const [sales, setSales] = useState({ 1: null, 3: null }); // the Level 1 and the LineGrade sale of the current order
+  const [sales, setSales] = useState({ 1: null, 3: null }); // the latest result shown for the Level 1 and the LineGrade sale of the current order
+  const [charged, setCharged] = useState({ 1: null, 3: null }); // the sales that really went through (a later duplicate answer must not hide them)
   const [paying, setPaying] = useState(false);
   const railOn = !!state?.limits?.rails?.paypal; // the PayPal rail only exists when the server has its credentials
   const [rail, setRail] = useState('braintree');
@@ -215,7 +216,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
   const body = useMemo(() => ({ items: filled, poNumber: po, shipping, taxRatePct: taxPct, rail }), [lines, po, shipping, taxPct, rail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setOrderId(null); setSales({ 1: null, 3: null });
+    setOrderId(null); setSales({ 1: null, 3: null }); setCharged({ 1: null, 3: null });
     if (!body.items.length || problems.length) { setPreview(null); setPerr(null); return undefined; }
     const t = setTimeout(async () => {
       try { setPreview(await api.preview(body)); setPerr(null); } catch (e) { setPreview(null); setPerr(e.message); }
@@ -225,7 +226,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
 
   const level = view === 'with' ? 3 : 1; // paying sends what the selected view shows
   const result = sales[level];
-  const setResult = (r) => setSales((x) => ({ ...x, [level]: r }));
+  const setResult = (r) => { setSales((x) => ({ ...x, [level]: r })); if (r && r.outcome === 'charged') setCharged((x) => ({ ...x, [level]: r })); };
   const pay = async (again) => {
     const id = again && orderId ? orderId : (orderId || newOrderId());
     setOrderId(id); setPaying(true); setResult(null);
@@ -370,7 +371,7 @@ export default function Order({ catalog, state, onNext, onReview }) {
           </div>
 
           {paid && result.level !== 1 && <ReadBack result={result} />}
-          {sales[1]?.outcome === 'charged' && sales[3]?.outcome === 'charged' && <SameOrderTwoWays l1={sales[1]} l3={sales[3]} before={preview?.validation?.before} />}
+          {charged[1] && charged[3] && <SameOrderTwoWays l1={charged[1]} l3={charged[3]} before={preview?.validation?.before} />}
         </div>
       </div>
     </section>

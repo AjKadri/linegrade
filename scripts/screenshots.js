@@ -97,10 +97,11 @@ async function main() {
   check('Review: header count reads "ALL REVIEWED ✓" at 0 left', /ALL REVIEWED ✓/.test(await page.getByTestId('left-count').innerText()));
   await shot('08-review-approved-visible.png');
   await page.getByRole('button', { name: 'Needs review', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.ag-row[row-id]').length === 0, null, { timeout: 4000 }).catch(() => {});
   check('Review: switching the filter to "Needs review" hides the handled rows', (await page.locator('.ag-row[row-id]').count()) === 0);
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await page.waitForSelector('.ag-row');
-  check('Review: filter "All" shows the whole catalog', (await page.evaluate(() => new Set([...document.querySelectorAll('.ag-row[row-id]')].map((r) => r.getAttribute('row-id'))).size)) >= 30);
+  check('Review: filter "All" shows the whole catalog', /40 ROWS SHOWN/.test(await page.locator('section .mono.muted', { hasText: 'ROWS SHOWN' }).first().innerText()));
   check('Review: completion banner appears', await page.locator('.banner', { hasText: 'ALL FLAGGED ROWS REVIEWED' }).isVisible());
   await shot('03b-review-all-approved.png');
 
