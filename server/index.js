@@ -181,6 +181,9 @@ function createApp(opts = {}) {
   const ipLimit = rateLimiter({ name: 'network address', max: () => config().ratePerIpPerMin, keyFn: (r) => r.ip });
   const sessionLimit = rateLimiter({ name: 'session', max: () => config().ratePerSessionPerMin, keyFn: (r) => r.session.id });
   const sessionMw = sessions.middleware();
+  // Per-session API answers must never be served from the browser cache: a cached answer would replay an old
+  // X-LG-Session flag on every reload and bring the "session ended" banner back each time.
+  app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   app.use('/api', (req, res, next) => (['/health', '/status'].includes(req.path) ? next() : ipLimit(req, res, next)));
   app.use('/api', (req, res, next) => (['/health', '/status'].includes(req.path) ? next() : sessionMw(req, res, next)));
   app.use('/api', (req, res, next) => (req.session ? sessionLimit(req, res, next) : next()));

@@ -48,3 +48,13 @@ test('a cookie this server ended for idleness is reported as expired, once', asy
     assert.strictEqual(r.headers.get('x-lg-session'), 'expired');
   } finally { server.close(); }
 });
+
+test('API answers are not cacheable, so an old session flag cannot be replayed from the browser cache', async () => {
+  const sessions = new SessionManager({ dir: tmp(), idleMs: 7_200_000 });
+  const app = createApp({ sessions, usage: new Usage(path.join(tmp(), 'u.json')) });
+  const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    for (const u of ['/api/state', '/api/catalog']) assert.strictEqual((await fetch(base + u)).headers.get('cache-control'), 'no-store', u);
+  } finally { server.close(); }
+});
